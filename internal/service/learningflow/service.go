@@ -42,7 +42,7 @@ func (s *Service) NextStep(blockType learning.BlockType, current learning.FlowSt
 		if action == ActionSkipReview {
 			return learning.StepSolution
 		}
-		return learning.StepSolution
+		return current
 	case learning.StepSolution:
 		if action == ActionNext {
 			return learning.StepTask
