@@ -51,6 +51,12 @@ func (s *Service) BuildBlockPayload(ctx context.Context, blockID int64) (BlockPa
 		return payload, nil
 	}
 
+	// Embedded solution (if present) has precedence over any task_solution relation.
+	// If embedded solution is empty, try to resolve a linked solution.
+	if payload.SolutionMD != "" {
+		return payload, nil
+	}
+
 	relations, err := s.repo.ListBlockRelations(ctx, blockID)
 	if err != nil {
 		return BlockPayload{}, fmt.Errorf("list block relations %d: %w", blockID, err)
@@ -63,7 +69,9 @@ func (s *Service) BuildBlockPayload(ctx context.Context, blockID int64) (BlockPa
 
 	linkedContent, err := s.repo.GetBlockContent(ctx, relation.ToBlockID)
 	if err != nil {
-		return BlockPayload{}, fmt.Errorf("get linked solution content %d for block %d: %w", relation.ToBlockID, blockID, err)
+		// Broken/stale relations shouldn't break the user flow.
+		// Degrade gracefully to the embedded solution content (which is empty here).
+		return payload, nil
 	}
 
 	if linkedContent.SolutionMD != "" {

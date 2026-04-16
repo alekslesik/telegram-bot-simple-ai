@@ -112,7 +112,7 @@ func TestBuildBlockPayloadUsesLinkedSolutionForTask(t *testing.T) {
 	}
 }
 
-func TestBuildBlockPayloadReturnsErrorWhenLinkedSolutionContentMissing(t *testing.T) {
+func TestBuildBlockPayloadDegradesGracefullyWhenLinkedSolutionContentMissing(t *testing.T) {
 	repo := &fakeContentRepository{
 		blocks: map[int64]learning.Block{
 			30: {
@@ -148,9 +148,61 @@ func TestBuildBlockPayloadReturnsErrorWhenLinkedSolutionContentMissing(t *testin
 
 	svc := New(repo)
 
-	_, err := svc.BuildBlockPayload(context.Background(), 30)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	payload, err := svc.BuildBlockPayload(context.Background(), 30)
+	if err != nil {
+		t.Fatalf("BuildBlockPayload() error = %v", err)
+	}
+	if payload.SolutionMD != "" {
+		t.Fatalf("expected empty solution due to missing linked content, got %q", payload.SolutionMD)
+	}
+}
+
+func TestBuildBlockPayloadEmbeddedSolutionPrecedenceOverBrokenRelation(t *testing.T) {
+	repo := &fakeContentRepository{
+		blocks: map[int64]learning.Block{
+			40: {
+				ID:        40,
+				BlockType: learning.BlockTask,
+				Title:     "Task with embedded solution",
+			},
+			41: {
+				ID:        41,
+				BlockType: learning.BlockSolution,
+				Title:     "Broken linked solution",
+			},
+		},
+		contents: map[int64]learning.BlockContent{
+			40: {
+				BlockID:    40,
+				TaskMD:     "Task text",
+				SolutionMD: "Embedded solution wins",
+			},
+			41: {
+				BlockID: 41,
+			},
+		},
+		relations: map[int64][]learning.BlockRelation{
+			40: {
+				{
+					FromBlockID:  40,
+					ToBlockID:    41,
+					RelationType: learning.RelationTaskSolution,
+				},
+			},
+		},
+		contentErrs: map[int64]error{
+			41: errors.New("broken linked content"),
+		},
+	}
+
+	svc := New(repo)
+
+	payload, err := svc.BuildBlockPayload(context.Background(), 40)
+	if err != nil {
+		t.Fatalf("BuildBlockPayload() error = %v", err)
+	}
+	if payload.SolutionMD != "Embedded solution wins" {
+		t.Fatalf("expected embedded solution to win, got %q", payload.SolutionMD)
 	}
 }
 
