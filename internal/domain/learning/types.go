@@ -47,6 +47,14 @@ type Block struct {
 	Tags       []string
 }
 
+type Chapter struct {
+	ID        int64
+	SectionID int64
+	Code      string
+	Title     string
+	SortOrder int
+}
+
 type ProgressRecord struct {
 	ID          int64
 	UserID      int64

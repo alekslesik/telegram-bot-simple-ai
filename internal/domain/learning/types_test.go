@@ -81,3 +81,29 @@ func TestAttemptAndSessionRecordsMatchSchemaFields(t *testing.T) {
 		t.Fatalf("expected mode to be preserved, got %q", session.Mode)
 	}
 }
+
+func TestChapterDTOShape(t *testing.T) {
+	ch := Chapter{
+		ID:        1,
+		SectionID: 2,
+		Code:      "intro",
+		Title:     "Introduction",
+		SortOrder: 3,
+	}
+
+	if ch.ID != 1 {
+		t.Fatalf("expected id to be preserved, got %d", ch.ID)
+	}
+	if ch.SectionID != 2 {
+		t.Fatalf("expected section id to be preserved, got %d", ch.SectionID)
+	}
+	if ch.Code != "intro" {
+		t.Fatalf("expected code to be preserved, got %q", ch.Code)
+	}
+	if ch.Title != "Introduction" {
+		t.Fatalf("expected title to be preserved, got %q", ch.Title)
+	}
+	if ch.SortOrder != 3 {
+		t.Fatalf("expected sort order to be preserved, got %d", ch.SortOrder)
+	}
+}
