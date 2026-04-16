@@ -1,6 +1,9 @@
 package learning
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestValidFlowSteps(t *testing.T) {
 	steps := []FlowStep{StepTheory, StepTask, StepAnswer, StepReview, StepSolution}
@@ -28,5 +31,53 @@ func TestProgressAndSessionStates(t *testing.T) {
 	}
 	if SessionStateClosed != "closed" {
 		t.Fatalf("expected closed session state, got %q", SessionStateClosed)
+	}
+}
+
+func TestAttemptAndSessionRecordsMatchSchemaFields(t *testing.T) {
+	now := time.Now()
+	score := 4.5
+	sectionID := int64(11)
+	chapterID := int64(12)
+	blockID := int64(13)
+
+	attempt := AttemptRecord{
+		AttemptNo:     2,
+		AnswerText:    "answer",
+		LLMFeedbackMD: "feedback",
+		Score:         &score,
+		CreatedAt:     now,
+	}
+
+	if attempt.AttemptNo != 2 {
+		t.Fatalf("expected attempt number to be preserved, got %d", attempt.AttemptNo)
+	}
+	if attempt.LLMFeedbackMD != "feedback" {
+		t.Fatalf("expected llm feedback markdown, got %q", attempt.LLMFeedbackMD)
+	}
+
+	session := SessionRecord{
+		ActiveSectionID: &sectionID,
+		ActiveChapterID: &chapterID,
+		ActiveBlockID:   &blockID,
+		FlowStep:        StepReview,
+		Mode:            "learning",
+		UpdatedAt:       now,
+	}
+
+	if session.ActiveSectionID == nil || *session.ActiveSectionID != sectionID {
+		t.Fatal("expected active section id to be set")
+	}
+	if session.ActiveChapterID == nil || *session.ActiveChapterID != chapterID {
+		t.Fatal("expected active chapter id to be set")
+	}
+	if session.ActiveBlockID == nil || *session.ActiveBlockID != blockID {
+		t.Fatal("expected active block id to be set")
+	}
+	if session.FlowStep != StepReview {
+		t.Fatalf("expected flow step to be preserved, got %q", session.FlowStep)
+	}
+	if session.Mode != "learning" {
+		t.Fatalf("expected mode to be preserved, got %q", session.Mode)
 	}
 }

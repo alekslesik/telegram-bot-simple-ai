@@ -59,23 +59,27 @@ type ProgressRecord struct {
 }
 
 type AttemptRecord struct {
-	ID         int64
-	UserID     int64
-	BlockID    int64
-	AnswerText string
-	ReviewText string
-	Score      *float64
-	CreatedAt  time.Time
+	ID            int64
+	UserID        int64
+	BlockID       int64
+	AttemptNo     int
+	AnswerText    string
+	LLMFeedbackMD string
+	Score         *float64
+	CreatedAt     time.Time
 }
 
 type SessionRecord struct {
-	ID         int64
-	UserID     int64
-	BlockID    *int64
-	State      SessionState
-	Context    string
-	StartedAt  time.Time
-	UpdatedAt  time.Time
-	ClosedAt   *time.Time
-	LastSeenAt *time.Time
+	ID              int64
+	UserID          int64
+	ActiveSectionID *int64
+	ActiveChapterID *int64
+	ActiveBlockID   *int64
+	FlowStep        FlowStep
+	Mode            string
+	State           SessionState
+	Context         string
+	StartedAt       time.Time
+	UpdatedAt       time.Time
+	ClosedAt        *time.Time
 }
