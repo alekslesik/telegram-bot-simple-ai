@@ -93,20 +93,14 @@ func migrateUp(ctx context.Context, db *sql.DB) error {
 			return fmt.Errorf("read migration %s: %w", filename, err)
 		}
 
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("begin tx for %s: %w", filename, err)
-		}
-		if _, err := tx.ExecContext(ctx, string(sqlBytes)); err != nil {
-			_ = tx.Rollback()
+		// Important: the SQL migration files may include their own BEGIN/COMMIT.
+		// We intentionally avoid wrapping Exec in an outer transaction to prevent
+		// transaction boundary conflicts.
+		if _, err := db.ExecContext(ctx, string(sqlBytes)); err != nil {
 			return fmt.Errorf("exec migration %s: %w", filename, err)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(filename) VALUES ($1)`, filename); err != nil {
-			_ = tx.Rollback()
+		if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations(filename) VALUES ($1)`, filename); err != nil {
 			return fmt.Errorf("record migration %s: %w", filename, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %s: %w", filename, err)
 		}
 	}
 
@@ -116,6 +110,16 @@ func migrateUp(ctx context.Context, db *sql.DB) error {
 func migrateDown(ctx context.Context, db *sql.DB) error {
 	// Minimal down: drop known MVP tables and clear migration records.
 	// This keeps `make migrate-down` usable without requiring reverse migrations scripts.
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			filename TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+
 	_, err := db.ExecContext(ctx, `
 		DROP TABLE IF EXISTS raw_images CASCADE;
 		DROP TABLE IF EXISTS raw_chunks CASCADE;
