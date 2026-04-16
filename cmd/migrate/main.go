@@ -120,7 +120,7 @@ func migrateDown(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("ensure schema_migrations: %w", err)
 	}
 
-	_, err := db.ExecContext(ctx, `
+	_, err = db.ExecContext(ctx, `
 		DROP TABLE IF EXISTS raw_images CASCADE;
 		DROP TABLE IF EXISTS raw_chunks CASCADE;
 		DROP TABLE IF EXISTS ingest_jobs CASCADE;
