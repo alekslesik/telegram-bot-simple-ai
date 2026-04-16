@@ -48,6 +48,27 @@ func TestNextStepTransitions(t *testing.T) {
 			want:      learning.StepReview,
 		},
 		{
+			name:      "answer submit moves to review",
+			blockType: learning.BlockTask,
+			current:   learning.StepAnswer,
+			action:    ActionSubmitAnswer,
+			want:      learning.StepReview,
+		},
+		{
+			name:      "unknown action on answer keeps step",
+			blockType: learning.BlockTask,
+			current:   learning.StepAnswer,
+			action:    Action("unknown"),
+			want:      learning.StepAnswer,
+		},
+		{
+			name:      "answer skip moves to solution",
+			blockType: learning.BlockTask,
+			current:   learning.StepAnswer,
+			action:    ActionSkipAnswer,
+			want:      learning.StepSolution,
+		},
+		{
 			name:      "review skip moves to solution",
 			blockType: learning.BlockTask,
 			current:   learning.StepReview,

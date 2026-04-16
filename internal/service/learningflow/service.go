@@ -40,9 +40,14 @@ func (s *Service) NextStep(blockType learning.BlockType, current learning.FlowSt
 		}
 		return current
 	case learning.StepAnswer:
-		// Any user action in the answer step is treated as "answer provided" and the flow moves to review.
-		// (Skipping answer is handled from StepTask.)
-		return learning.StepReview
+		switch action {
+		case ActionSubmitAnswer:
+			return learning.StepReview
+		case ActionSkipAnswer:
+			return learning.StepSolution
+		default:
+			return current
+		}
 	case learning.StepReview:
 		if action == ActionSkipReview {
 			return learning.StepSolution
