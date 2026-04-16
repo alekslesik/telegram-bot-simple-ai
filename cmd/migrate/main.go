@@ -149,4 +149,3 @@ func isApplied(ctx context.Context, db *sql.DB, filename string) (bool, error) {
 	err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE filename=$1)`, filename).Scan(&applied)
 	return applied, err
 }
-

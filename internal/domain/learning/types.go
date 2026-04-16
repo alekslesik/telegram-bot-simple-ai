@@ -35,14 +35,14 @@ type Section struct {
 }
 
 type Block struct {
-	ID         int64
-	SectionID  int64
-	ChapterID  int64
-	Code       string
-	BlockType  BlockType
-	Title      string
-	SortOrder  int
-	IsActive   bool
+	ID        int64
+	SectionID int64
+	ChapterID int64
+	Code      string
+	BlockType BlockType
+	Title     string
+	SortOrder int
+	IsActive  bool
 }
 
 type Chapter struct {
@@ -54,19 +54,19 @@ type Chapter struct {
 }
 
 type BlockContent struct {
-	BlockID         int64
-	TheoryMD        string
-	TaskMD          string
-	SolutionMD      string
-	ImageURLs       []string
-	Difficulty      string
-	Tags            []string
-	LanguageCode    string
-	SourceType      string
-	SourcePath      string
-	SourcePage      *int
-	SourceChunkRef  string
-	SourceMetadata  map[string]any
+	BlockID        int64
+	TheoryMD       string
+	TaskMD         string
+	SolutionMD     string
+	ImageURLs      []string
+	Difficulty     string
+	Tags           []string
+	LanguageCode   string
+	SourceType     string
+	SourcePath     string
+	SourcePage     *int
+	SourceChunkRef string
+	SourceMetadata map[string]any
 }
 
 type BlockRelationType string
