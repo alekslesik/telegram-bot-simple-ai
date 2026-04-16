@@ -9,6 +9,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"github.com/alekslesik/telegram-bot-simple/internal/bot"
+	"github.com/alekslesik/telegram-bot-simple/internal/config"
 	"github.com/alekslesik/telegram-bot-simple/internal/logging"
 )
 
@@ -208,6 +209,21 @@ func TestTokenFromEnv(t *testing.T) {
 	t.Setenv("TOKEN", "  abc  ")
 	if got := tokenFromEnv(); got != "abc" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestValidateRuntimeConfig_requiresDatabaseURL(t *testing.T) {
+	cfg := config.Config{
+		Token:       "token",
+		DatabaseURL: "   ",
+	}
+
+	err := validateRuntimeConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if got, want := err.Error(), "env var DATABASE_URL is not set (see .env)"; got != want {
+		t.Fatalf("validateRuntimeConfig() error = %q, want %q", got, want)
 	}
 }
 

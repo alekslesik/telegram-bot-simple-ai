@@ -176,6 +176,14 @@ func tokenFromEnv() string {
 	return strings.TrimSpace(os.Getenv("TOKEN"))
 }
 
+func validateRuntimeConfig(cfg config.Config) error {
+	if strings.TrimSpace(cfg.DatabaseURL) == "" {
+		return fmt.Errorf("env var DATABASE_URL is not set (see .env)")
+	}
+
+	return nil
+}
+
 func longPollTimeoutSeconds() int {
 	return 60
 }
@@ -208,6 +216,9 @@ func main() {
 
 	if cfg.Token == "" {
 		log.Fatal("env var TOKEN is not set (see .env)")
+	}
+	if err := validateRuntimeConfig(cfg); err != nil {
+		log.Fatal(err)
 	}
 
 	db, err := postgres.Open(ctx, cfg.DatabaseURL)

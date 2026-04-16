@@ -2,7 +2,9 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -13,6 +15,7 @@ type Config struct {
 	LLMBaseURL  string
 	LLMAPIKey   string
 	LLMModel    string
+	LLMTimeout  time.Duration
 }
 
 func FromEnv() Config {
@@ -24,9 +27,24 @@ func FromEnv() Config {
 		LLMBaseURL:  trimmedEnv("LLM_BASE_URL"),
 		LLMAPIKey:   trimmedEnv("LLM_API_KEY"),
 		LLMModel:    trimmedEnv("LLM_MODEL"),
+		LLMTimeout:  envDurationSeconds("LLM_TIMEOUT_SEC"),
 	}
 }
 
 func trimmedEnv(key string) string {
 	return strings.TrimSpace(os.Getenv(key))
+}
+
+func envDurationSeconds(key string) time.Duration {
+	value := trimmedEnv(key)
+	if value == "" {
+		return 0
+	}
+
+	seconds, err := strconv.Atoi(value)
+	if err != nil {
+		return 0
+	}
+
+	return time.Duration(seconds) * time.Second
 }
