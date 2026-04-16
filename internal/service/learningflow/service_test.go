@@ -7,7 +7,7 @@ import (
 )
 
 func TestNextFromTaskSkipAnswerMovesToSolution(t *testing.T) {
-	svc := New(nil, nil)
+	svc := New()
 
 	next := svc.NextStep(learning.BlockTask, learning.StepTask, ActionSkipAnswer)
 
@@ -17,7 +17,7 @@ func TestNextFromTaskSkipAnswerMovesToSolution(t *testing.T) {
 }
 
 func TestNextStepTransitions(t *testing.T) {
-	svc := New(nil, nil)
+	svc := New()
 
 	tests := []struct {
 		name      string
@@ -46,6 +46,20 @@ func TestNextStepTransitions(t *testing.T) {
 			current:   learning.StepReview,
 			action:    ActionSkipReview,
 			want:      learning.StepSolution,
+		},
+		{
+			name:      "solution next moves to task",
+			blockType: learning.BlockTask,
+			current:   learning.StepSolution,
+			action:    ActionNext,
+			want:      learning.StepTask,
+		},
+		{
+			name:      "unknown action on task keeps step",
+			blockType: learning.BlockTask,
+			current:   learning.StepTask,
+			action:    Action("unknown"),
+			want:      learning.StepTask,
 		},
 	}
 

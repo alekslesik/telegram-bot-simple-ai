@@ -2,7 +2,6 @@ package learningflow
 
 import (
 	"github.com/alekslesik/telegram-bot-simple/internal/domain/learning"
-	"github.com/alekslesik/telegram-bot-simple/internal/repository"
 )
 
 type Action string
@@ -15,15 +14,10 @@ const (
 )
 
 type Service struct {
-	contentRepo  repository.ContentRepository
-	progressRepo repository.ProgressRepository
 }
 
-func New(contentRepo repository.ContentRepository, progressRepo repository.ProgressRepository) *Service {
-	return &Service{
-		contentRepo:  contentRepo,
-		progressRepo: progressRepo,
-	}
+func New() *Service {
+	return &Service{}
 }
 
 func (s *Service) NextStep(blockType learning.BlockType, current learning.FlowStep, action Action) learning.FlowStep {
@@ -39,12 +33,22 @@ func (s *Service) NextStep(blockType learning.BlockType, current learning.FlowSt
 		if action == ActionSubmitAnswer {
 			return learning.StepReview
 		}
-		return learning.StepSolution
+		return current
 	case learning.StepAnswer:
+		// Any user action in the answer step is treated as "answer provided" and the flow moves to review.
+		// (Skipping answer is handled from StepTask.)
 		return learning.StepReview
 	case learning.StepReview:
+		if action == ActionSkipReview {
+			return learning.StepSolution
+		}
 		return learning.StepSolution
+	case learning.StepSolution:
+		if action == ActionNext {
+			return learning.StepTask
+		}
+		return current
 	default:
-		return learning.StepSolution
+		return current
 	}
 }
