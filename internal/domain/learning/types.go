@@ -77,8 +77,5 @@ type SessionRecord struct {
 	ActiveBlockID   *int64
 	FlowStep        FlowStep
 	Mode            string
-	State           SessionState
-	StartedAt       time.Time
 	UpdatedAt       time.Time
-	ClosedAt        *time.Time
 }
