@@ -12,4 +12,6 @@ type ContentRepository interface {
 	ListChaptersBySection(ctx context.Context, sectionID int64) ([]learning.Chapter, error)
 	ListChapterBlocks(ctx context.Context, chapterID int64) ([]learning.Block, error)
 	GetBlock(ctx context.Context, blockID int64) (learning.Block, error)
+	GetBlockContent(ctx context.Context, blockID int64) (learning.BlockContent, error)
+	ListBlockRelations(ctx context.Context, blockID int64) ([]learning.BlockRelation, error)
 }

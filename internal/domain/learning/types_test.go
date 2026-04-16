@@ -107,3 +107,45 @@ func TestChapterDTOShape(t *testing.T) {
 		t.Fatalf("expected sort order to be preserved, got %d", ch.SortOrder)
 	}
 }
+
+func TestBlockContentAndRelationDTOShape(t *testing.T) {
+	page := 7
+	content := BlockContent{
+		BlockID:        10,
+		TheoryMD:       "theory",
+		TaskMD:         "task",
+		SolutionMD:     "solution",
+		ImageURLs:      []string{"https://example.test/image.png"},
+		Difficulty:     "medium",
+		Tags:           []string{"arrays", "intro"},
+		LanguageCode:   "ru",
+		SourceType:     "pdf",
+		SourcePath:     "docs/source.pdf",
+		SourcePage:     &page,
+		SourceChunkRef: "chunk-1",
+	}
+
+	if content.BlockID != 10 {
+		t.Fatalf("expected block id to be preserved, got %d", content.BlockID)
+	}
+	if content.SourcePage == nil || *content.SourcePage != 7 {
+		t.Fatal("expected source page to be set")
+	}
+	if len(content.ImageURLs) != 1 || content.ImageURLs[0] == "" {
+		t.Fatal("expected image urls to be preserved")
+	}
+
+	relation := BlockRelation{
+		FromBlockID:  10,
+		ToBlockID:    11,
+		RelationType: "next",
+		SortOrder:    1,
+	}
+
+	if relation.FromBlockID != 10 || relation.ToBlockID != 11 {
+		t.Fatal("expected block relation ids to be preserved")
+	}
+	if relation.RelationType != "next" {
+		t.Fatalf("expected relation type to be preserved, got %q", relation.RelationType)
+	}
+}

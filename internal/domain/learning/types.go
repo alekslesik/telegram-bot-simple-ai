@@ -55,6 +55,28 @@ type Chapter struct {
 	SortOrder int
 }
 
+type BlockContent struct {
+	BlockID         int64
+	TheoryMD        string
+	TaskMD          string
+	SolutionMD      string
+	ImageURLs       []string
+	Difficulty      string
+	Tags            []string
+	LanguageCode    string
+	SourceType      string
+	SourcePath      string
+	SourcePage      *int
+	SourceChunkRef  string
+}
+
+type BlockRelation struct {
+	FromBlockID  int64
+	ToBlockID    int64
+	RelationType string
+	SortOrder    int
+}
+
 type ProgressRecord struct {
 	ID          int64
 	UserID      int64
