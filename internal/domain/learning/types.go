@@ -43,8 +43,6 @@ type Block struct {
 	Title      string
 	SortOrder  int
 	IsActive   bool
-	Difficulty string
-	Tags       []string
 }
 
 type Chapter struct {
