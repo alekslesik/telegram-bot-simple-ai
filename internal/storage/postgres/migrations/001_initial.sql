@@ -109,7 +109,8 @@ CREATE TABLE user_sessions (
     active_block_id BIGINT REFERENCES learning_blocks(id) ON DELETE SET NULL,
     flow_step TEXT NOT NULL DEFAULT 'theory',
     mode TEXT NOT NULL DEFAULT 'learning',
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id)
 );
 
 CREATE TABLE ingest_jobs (
