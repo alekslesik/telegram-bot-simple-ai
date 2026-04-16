@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -188,6 +189,97 @@ func TestHandlers_HandleCallback_FlowNextFromTheoryShowsTask(t *testing.T) {
 	}
 }
 
+func TestCommandKeyboard_LearningMenuLabelsResolveThroughMap(t *testing.T) {
+	kb := commandKeyboard()
+	seen := make(map[string]struct{})
+	for _, row := range kb.Keyboard {
+		for _, btn := range row {
+			seen[btn.Text] = struct{}{}
+		}
+	}
+
+	required := []string{"Введение", "Алгоритмы по порядку", "Рандом задача", "Мой прогресс", "Настройки"}
+	for _, label := range required {
+		if _, ok := seen[label]; !ok {
+			t.Fatalf("expected reply keyboard to contain %q", label)
+		}
+		if _, ok := learningMenuButtons[label]; !ok {
+			t.Fatalf("expected %q to exist in learningMenuButtons", label)
+		}
+	}
+}
+
+type captureSectionRepo struct {
+	lastSectionCode string
+}
+
+func (c *captureSectionRepo) GetSectionByCode(_ context.Context, code string) (learning.Section, error) {
+	c.lastSectionCode = code
+	return learning.Section{ID: 1}, nil
+}
+
+func (c *captureSectionRepo) GetChapter(context.Context, int64) (learning.Chapter, error) {
+	return learning.Chapter{}, errors.New("not implemented")
+}
+
+func (c *captureSectionRepo) ListChaptersBySection(context.Context, int64) ([]learning.Chapter, error) {
+	return []learning.Chapter{{ID: 10, SectionID: 1, Code: "ch", Title: "ch", SortOrder: 1}}, nil
+}
+
+func (c *captureSectionRepo) ListChapterBlocks(context.Context, int64) ([]learning.Block, error) {
+	return []learning.Block{{ID: 100, ChapterID: 10, BlockType: learning.BlockTheory, Title: "t", Code: "b"}}, nil
+}
+
+func (c *captureSectionRepo) GetBlock(context.Context, int64) (learning.Block, error) {
+	return learning.Block{}, errors.New("not implemented")
+}
+
+func (c *captureSectionRepo) GetBlockContent(context.Context, int64) (learning.BlockContent, error) {
+	return learning.BlockContent{}, errors.New("not implemented")
+}
+
+func (c *captureSectionRepo) ListBlockRelations(context.Context, int64) ([]learning.BlockRelation, error) {
+	return nil, nil
+}
+
+var _ repository.ContentRepository = (*captureSectionRepo)(nil)
+
+func TestLearningMenuButtonsRouteToExpectedSectionCodes(t *testing.T) {
+	tests := []struct {
+		label           string
+		expectedSection string
+	}{
+		{label: "Введение", expectedSection: "introduction"},
+		{label: "Алгоритмы по порядку", expectedSection: "algorithms"},
+	}
+
+	for _, tt := range tests {
+		bot := &fakeFlowTelegram{}
+		repo := &captureSectionRepo{}
+		contentSvc := fakeFlowContentService{
+			payloads: map[int64]contentservice.BlockPayload{
+				100: {
+					Title:     "t",
+					BlockType: learning.BlockTheory,
+					TheoryMD:  "TheoryMD",
+				},
+			},
+		}
+
+		h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepTask})
+
+		msg := &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: 10},
+			From: &tgbotapi.User{ID: 999},
+		}
+		h.handleLearningMenuSelection(msg, learningMenuButtons[tt.label])
+
+		if repo.lastSectionCode != tt.expectedSection {
+			t.Fatalf("for label %q expected section %q, got %q", tt.label, tt.expectedSection, repo.lastSectionCode)
+		}
+	}
+}
+
 func TestHandlers_HandleCallback_UnknownFlowActionKeepsStateAndSendsInstruction(t *testing.T) {
 	bot := &fakeFlowTelegram{}
 	repo := fakeFlowContentRepository{
@@ -237,5 +329,29 @@ func TestHandlers_HandleCallback_UnknownFlowActionKeepsStateAndSendsInstruction(
 	}
 	if got.BlockID != 55 || got.Step != learning.StepReview || got.LastAnswer != "my previous answer" {
 		t.Fatalf("state changed unexpectedly: %#v", got)
+	}
+}
+
+func TestParseFlowCallbackData_MalformedInputsReturnOkFalse(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+	}{
+		{name: "wrong prefix", in: "xxx:next:10"},
+		{name: "missing parts", in: "flow:next"},
+		{name: "too many parts", in: "flow:next:10:extra"},
+		{name: "non numeric id", in: "flow:next:notnum"},
+		{name: "zero id", in: "flow:next:0"},
+		{name: "negative id", in: "flow:next:-1"},
+		{name: "unknown action", in: "flow:unknown:10"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, ok := parseFlowCallbackData(tt.in)
+			if ok {
+				t.Fatalf("expected ok=false for input %q", tt.in)
+			}
+		})
 	}
 }
