@@ -57,13 +57,52 @@ Content is chapter-oriented and allows mixed sequence:
 
 Each block has explicit type and order index inside chapter.
 
+### Block Types
+
+- `theory`
+- `task`
+- `solution`
+
+Rules:
+
+- one card is usually exactly one block;
+- one card is either pure theory or a task;
+- in rare cases a task is split across two cards: one `task` card and one separate `solution` card;
+- a solution always exists, either embedded in the task card or stored in a separate solution card.
+
 ### Section Layout
 
 - `introduction`
   - chapters with theory blocks only
 - `algorithms`
   - chapters such as `two-pointers`, `hash-map`, etc.
-  - mixed theory and task blocks
+  - mixed theory, task, and optional separate solution blocks
+
+## Raw Content Layout on Host
+
+Content is uploaded as files on the host in a directory tree:
+
+- `content/raw/introduction/*.pdf`
+- `content/raw/algorithms/<chapter-folder>/*.pdf`
+
+Each chapter has its own folder, for example:
+
+- `content/raw/algorithms/two-pointers/`
+- `content/raw/algorithms/hash-map/`
+
+### File Naming Reality
+
+The ingestion pipeline must support the user's actual saved filenames, for example:
+
+- `FireShot Capture 306 - Что такое хеш-таблица_ - algocode - [algocode.io].pdf`
+
+Rules:
+
+- Cyrillic filenames are allowed.
+- The primary order key is the number after `FireShot Capture`.
+- If multiple files share the same capture number inside a chapter, order them by file modification time (`mtime`) with newer files taking priority.
+- If a capture number is missing, fall back to `mtime` ordering.
+- Block type (`theory|task|solution`) is determined from PDF content, not from filename.
 
 ## Telegram UX
 
@@ -81,6 +120,17 @@ Each block has explicit type and order index inside chapter.
 - Task: `✍️ Ответить` / `⏭ Пропустить ответ`
 - Review: `🔍 Проверить` / `⏭ Пропустить разбор`
 - Solution: `➡️ Следующая` / `🎲 Рандом`
+
+### User Answer Format
+
+The bot accepts free-form user responses in MVP:
+
+- Go code
+- textual explanation
+- mixed code + explanation
+- any other free-form answer
+
+The review step analyzes whatever the user sent instead of enforcing a rigid submission format.
 
 ### Random Mode
 
@@ -117,9 +167,11 @@ Layering rule: `transport -> service -> repository`.
 - `chapters`
   - `id`, `section_id`, `code`, `title`, `sort_order`
 - `learning_blocks`
-  - `id`, `section_id`, `chapter_id`, `block_type` (`theory|task`), `title`, `sort_order`, `is_active`
+  - `id`, `section_id`, `chapter_id`, `block_type` (`theory|task|solution`), `title`, `sort_order`, `is_active`
 - `block_content`
-  - `id`, `block_id`, `theory_md`, `task_md`, `solution_md`, `image_urls`, `difficulty`, `tags`, source metadata
+  - `id`, `block_id`, `theory_md`, `task_md`, `solution_md`, `image_urls`, `difficulty`, `tags`, `language_code`, source metadata
+- `block_relations`
+  - `id`, `from_block_id`, `to_block_id`, `relation_type` (`task_solution`)
 - `user_progress`
   - `id`, `user_id`, `block_id`, `status`, `current_step`, timestamps
 - `user_attempts`
@@ -155,6 +207,11 @@ MVP provider:
 - `openai_compatible` adapter
 - DeepSeek can be used via base URL + model config
 
+Language behavior:
+
+- Go is the default language in MVP;
+- design should allow additional languages later without schema rewrite.
+
 Configuration:
 
 - `LLM_PROVIDER`
@@ -175,8 +232,8 @@ Guardrails:
 1. Parse readable PDF text to staging (`raw_chunks`, `raw_images`).
 2. Apply deterministic parsing rules:
    - detect title, theory, condition, examples, solution areas;
-   - use filename order as initial sequence order.
-3. Use AI optionally to classify/refine ambiguous chunk boundaries.
+   - use chapter-local `FireShot Capture N` order as initial sequence order.
+3. Use AI optionally to classify/refine ambiguous chunk boundaries and infer block type when rules are inconclusive.
 4. Validate and flag risky blocks:
    - missing task or solution;
    - too-short content;
@@ -187,6 +244,10 @@ Notes:
 
 - text-readable PDFs are primary input format;
 - image-only PDFs require OCR fallback and are lower quality.
+- task-to-solution linking uses a hybrid strategy:
+  - first by local order proximity inside a chapter;
+  - then by title/content similarity checks;
+  - ambiguous links are flagged as `needs_review`.
 
 ## Error Handling
 
@@ -233,3 +294,7 @@ Metrics:
 - Flow allows skip for answer and review steps.
 - LLM is provider-agnostic with default openai-compatible setup.
 - PDF handling strategy is parser-first with optional AI assistance.
+- Raw file naming supports `FireShot Capture N ...` with Cyrillic filenames.
+- Duplicate capture numbers are resolved by file modification time.
+- User submissions are free-form; review analyzes whatever was sent.
+- Go is the default content language in MVP, with future multi-language extensibility.
