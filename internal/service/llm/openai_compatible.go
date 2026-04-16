@@ -17,6 +17,11 @@ type Config struct {
 	BaseURL string
 	APIKey  string
 	Model   string
+	Timeout time.Duration
+
+	// HTTPClient allows tests to inject a deterministic transport/client.
+	// If nil, NewOpenAICompatible builds a client with Config.Timeout.
+	HTTPClient *http.Client
 }
 
 type OpenAICompatible struct {
@@ -27,11 +32,22 @@ type OpenAICompatible struct {
 var _ Provider = (*OpenAICompatible)(nil)
 
 func NewOpenAICompatible(cfg Config) *OpenAICompatible {
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = defaultTimeout
+	}
+
+	httpClient := cfg.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
+
+	// Always honor Config.Timeout, even if the caller injected a custom client.
+	httpClient.Timeout = timeout
+
 	return &OpenAICompatible{
-		cfg: cfg,
-		httpClient: &http.Client{
-			Timeout: defaultTimeout,
-		},
+		cfg:        cfg,
+		httpClient: httpClient,
 	}
 }
 
