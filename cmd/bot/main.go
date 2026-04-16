@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net"
@@ -25,6 +26,8 @@ var (
 	Commit    = "unknown"
 	BuildDate = "unknown"
 )
+
+var openPostgres = postgres.Open
 
 // loadEuropeMoscow is swappable in tests to cover the LoadLocation error path.
 var loadEuropeMoscow = func() (*time.Location, error) {
@@ -184,6 +187,17 @@ func validateRuntimeConfig(cfg config.Config) error {
 	return nil
 }
 
+func startupPostgresConnectTimeout() time.Duration {
+	return 5 * time.Second
+}
+
+func openPostgresWithTimeout(ctx context.Context, databaseURL string) (*sql.DB, error) {
+	connectCtx, cancel := context.WithTimeout(ctx, startupPostgresConnectTimeout())
+	defer cancel()
+
+	return openPostgres(connectCtx, databaseURL)
+}
+
 func longPollTimeoutSeconds() int {
 	return 60
 }
@@ -221,7 +235,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	db, err := postgres.Open(ctx, cfg.DatabaseURL)
+	db, err := openPostgresWithTimeout(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("failed to connect postgres: %v", err)
 	}

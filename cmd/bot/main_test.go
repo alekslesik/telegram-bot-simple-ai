@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -224,6 +226,41 @@ func TestValidateRuntimeConfig_requiresDatabaseURL(t *testing.T) {
 	}
 	if got, want := err.Error(), "env var DATABASE_URL is not set (see .env)"; got != want {
 		t.Fatalf("validateRuntimeConfig() error = %q, want %q", got, want)
+	}
+}
+
+func TestOpenPostgresWithTimeout_appliesStartupDeadline(t *testing.T) {
+	orig := openPostgres
+	t.Cleanup(func() { openPostgres = orig })
+
+	var (
+		gotURL      string
+		gotDeadline time.Time
+		gotHasLimit bool
+	)
+	openPostgres = func(ctx context.Context, databaseURL string) (*sql.DB, error) {
+		gotURL = databaseURL
+		gotDeadline, gotHasLimit = ctx.Deadline()
+		return &sql.DB{}, nil
+	}
+
+	start := time.Now()
+	db, err := openPostgresWithTimeout(context.Background(), "postgres://bot:bot@localhost:5432/bot?sslmode=disable")
+	if err != nil {
+		t.Fatalf("openPostgresWithTimeout() error = %v", err)
+	}
+	if db == nil {
+		t.Fatal("expected db")
+	}
+
+	if gotURL != "postgres://bot:bot@localhost:5432/bot?sslmode=disable" {
+		t.Fatalf("openPostgresWithTimeout() url = %q", gotURL)
+	}
+	if !gotHasLimit {
+		t.Fatal("expected startup timeout deadline")
+	}
+	if got := gotDeadline.Sub(start); got < startupPostgresConnectTimeout()-time.Second || got > startupPostgresConnectTimeout()+time.Second {
+		t.Fatalf("deadline offset = %s, want about %s", got, startupPostgresConnectTimeout())
 	}
 }
 
