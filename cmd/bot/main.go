@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net"
@@ -13,7 +15,11 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"github.com/alekslesik/telegram-bot-simple/internal/bot"
+	"github.com/alekslesik/telegram-bot-simple/internal/config"
 	"github.com/alekslesik/telegram-bot-simple/internal/logging"
+	contentservice "github.com/alekslesik/telegram-bot-simple/internal/service/content"
+	learningflowservice "github.com/alekslesik/telegram-bot-simple/internal/service/learningflow"
+	"github.com/alekslesik/telegram-bot-simple/internal/storage/postgres"
 	"github.com/alekslesik/telegram-bot-simple/internal/telegram"
 )
 
@@ -22,6 +28,8 @@ var (
 	Commit    = "unknown"
 	BuildDate = "unknown"
 )
+
+var openPostgres = postgres.Open
 
 // loadEuropeMoscow is swappable in tests to cover the LoadLocation error path.
 var loadEuropeMoscow = func() (*time.Location, error) {
@@ -173,6 +181,25 @@ func tokenFromEnv() string {
 	return strings.TrimSpace(os.Getenv("TOKEN"))
 }
 
+func validateRuntimeConfig(cfg config.Config) error {
+	if strings.TrimSpace(cfg.DatabaseURL) == "" {
+		return fmt.Errorf("env var DATABASE_URL is not set (see .env)")
+	}
+
+	return nil
+}
+
+func startupPostgresConnectTimeout() time.Duration {
+	return 5 * time.Second
+}
+
+func openPostgresWithTimeout(ctx context.Context, databaseURL string) (*sql.DB, error) {
+	connectCtx, cancel := context.WithTimeout(ctx, startupPostgresConnectTimeout())
+	defer cancel()
+
+	return openPostgres(connectCtx, databaseURL)
+}
+
 func longPollTimeoutSeconds() int {
 	return 60
 }
@@ -192,6 +219,8 @@ func setMyCommandsConfig() tgbotapi.SetMyCommandsConfig {
 
 func main() {
 	logger := logging.NewFromEnv()
+	cfg := config.FromEnv()
+	ctx := context.Background()
 
 	buildDate := formatBuildDate(BuildDate)
 
@@ -201,19 +230,29 @@ func main() {
 		"build_date", buildDate,
 	)
 
-	token := tokenFromEnv()
-	if token == "" {
+	if cfg.Token == "" {
 		log.Fatal("env var TOKEN is not set (see .env)")
 	}
+	if err := validateRuntimeConfig(cfg); err != nil {
+		log.Fatal(err)
+	}
 
-	username := os.Getenv("USERNAME")
+	db, err := openPostgresWithTimeout(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect postgres: %v", err)
+	}
+	defer db.Close()
 
-	tg, err := createBotWithRetry(token, logger)
+	contentRepo := postgres.NewContentRepository(db)
+	contentSvc := contentservice.New(contentRepo)
+	learningSvc := learningflowservice.New()
+
+	tg, err := createBotWithRetry(cfg.Token, logger)
 	if err != nil {
 		log.Fatalf("failed to create bot: %v", err)
 	}
 
-	logAuthorized(logger, username, tg.Self.UserName)
+	logAuthorized(logger, cfg.Username, tg.Self.UserName)
 	probeTelegramAPI(tg, logger, "startup")
 
 	registerBotCommands(tg, logger)
@@ -229,8 +268,11 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	h := bot.Handlers{
-		Bot:    tg,
-		Logger: logger,
+		Bot:      tg,
+		Logger:   logger,
+		Repo:     contentRepo,
+		Content:  contentSvc,
+		Learning: learningSvc,
 	}
 
 	logger.Info("bot started with long polling, press Ctrl+C to stop")

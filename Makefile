@@ -13,7 +13,7 @@ GOTOOLCHAIN_LOCAL := $(shell go env GOVERSION 2>/dev/null)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all run build deps fmt fmt-check imports lint vet staticcheck golangci-lint test docker-build docker-run docker-stop docker-logs docker-compose-up docker-compose-down preprod vuln tag-create tag-push tag-release ssh-vps
+.PHONY: help all run build deps fmt fmt-check imports lint vet staticcheck golangci-lint test ingest migrate-up migrate-down docker-build docker-run docker-stop docker-logs docker-compose-up docker-compose-down preprod vuln tag-create tag-push tag-release ssh-vps
 
 ## Show available make targets
 help:
@@ -30,6 +30,9 @@ help:
 	@echo "  staticcheck   - Run staticcheck (go run, same Go as module)"
 	@echo "  golangci-lint - Run golangci-lint (if installed)"
 	@echo "  test          - Run go tests"
+	@echo "  ingest        - Prepare readable PDF inputs from ./content/raw"
+	@echo "  migrate-up    - Apply database migrations (requires cmd/migrate)"
+	@echo "  migrate-down  - Roll back database migrations (requires cmd/migrate)"
 	@echo "  vuln          - Run govulncheck (via go run)"
 	@echo "  docker-build  - Build Docker image"
 	@echo "  docker-run    - Run bot in Docker with .env"
@@ -112,6 +115,18 @@ golangci-lint:
 ## Run tests (if/when they appear)
 test:
 	go test $(GO_FILES)
+
+## Prepare readable PDF inputs from ./content/raw
+ingest:
+	go run ./cmd/ingest -root ./content/raw
+
+## Apply database migrations
+migrate-up:
+	go run ./cmd/migrate up
+
+## Roll back database migrations
+migrate-down:
+	go run ./cmd/migrate down
 
 ## Vulnerability check (govulncheck via go run, same Go as module)
 vuln:
