@@ -1,0 +1,673 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>bot: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/alekslesik/telegram-bot-simple/cmd/bot/main.go (43.8%)</option>
+				
+				<option value="file1">github.com/alekslesik/telegram-bot-simple/internal/bot/handlers.go (100.0%)</option>
+				
+				<option value="file2">github.com/alekslesik/telegram-bot-simple/internal/logging/logging.go (100.0%)</option>
+				
+				<option value="file3">github.com/alekslesik/telegram-bot-simple/internal/telegram/telegram.go (66.7%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "log"
+        "os"
+        "os/signal"
+        "strings"
+        "syscall"
+        "time"
+
+        tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+        "github.com/alekslesik/telegram-bot-simple/internal/bot"
+        "github.com/alekslesik/telegram-bot-simple/internal/logging"
+        "github.com/alekslesik/telegram-bot-simple/internal/telegram"
+)
+
+var (
+        Version   = "dev"
+        Commit    = "unknown"
+        BuildDate = "unknown"
+)
+
+// loadEuropeMoscow is swappable in tests to cover the LoadLocation error path.
+var loadEuropeMoscow = func() (*time.Location, error) <span class="cov8" title="1">{
+        return time.LoadLocation("Europe/Moscow")
+}</span>
+
+// formatBuildDate turns an RFC3339 / RFC3339Nano build timestamp into log display format (Europe/Moscow).
+func formatBuildDate(raw string) string <span class="cov8" title="1">{
+        if t, err := time.Parse(time.RFC3339, raw); err == nil </span><span class="cov8" title="1">{
+                if loc, locErr := loadEuropeMoscow(); locErr == nil </span><span class="cov8" title="1">{
+                        t = t.In(loc)
+                }</span>
+                <span class="cov8" title="1">return t.Format("02/01/2006 15:04:05")</span>
+        }
+        <span class="cov8" title="1">if t, err := time.Parse(time.RFC3339Nano, raw); err == nil </span><span class="cov0" title="0">{
+                if loc, locErr := loadEuropeMoscow(); locErr == nil </span><span class="cov0" title="0">{
+                        t = t.In(loc)
+                }</span>
+                <span class="cov0" title="0">return t.Format("02/01/2006 15:04:05")</span>
+        }
+        <span class="cov8" title="1">return raw</span>
+}
+
+func applyTelegramUpdate(h *bot.Handlers, u tgbotapi.Update) <span class="cov8" title="1">{
+        if u.CallbackQuery != nil </span><span class="cov8" title="1">{
+                h.HandleCallback(u.CallbackQuery)
+                return
+        }</span>
+        <span class="cov8" title="1">if u.Message == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+        <span class="cov8" title="1">h.HandleMessage(u.Message)</span>
+}
+
+func logAuthorized(logger slogLogger, username, botUsername string) <span class="cov8" title="1">{
+        if username != "" </span><span class="cov8" title="1">{
+                logger.Info("authorized",
+                        "username", botUsername,
+                        "expected_username", username,
+                )
+        }</span> else<span class="cov8" title="1"> {
+                logger.Info("authorized",
+                        "username", botUsername,
+                )
+        }</span>
+}
+
+// slogLogger is the subset of *slog.Logger used by main (tests pass a concrete *slog.Logger).
+type slogLogger interface {
+        Info(msg string, args ...any)
+        Error(msg string, args ...any)
+}
+
+type commandRegistrar interface {
+        Request(tgbotapi.Chattable) (*tgbotapi.APIResponse, error)
+}
+
+func registerBotCommands(reg commandRegistrar, logger slogLogger) <span class="cov8" title="1">{
+        if _, err := reg.Request(setMyCommandsConfig()); err != nil </span><span class="cov8" title="1">{
+                logger.Error("failed to register bot commands", "err", err)
+        }</span>
+}
+
+func tokenFromEnv() string <span class="cov8" title="1">{
+        return strings.TrimSpace(os.Getenv("TOKEN"))
+}</span>
+
+func longPollTimeoutSeconds() int <span class="cov8" title="1">{
+        return 60
+}</span>
+
+func setMyCommandsConfig() tgbotapi.SetMyCommandsConfig <span class="cov8" title="1">{
+        return tgbotapi.NewSetMyCommands(
+                tgbotapi.BotCommand{Command: "start", Description: "🚀 Старт"},
+                tgbotapi.BotCommand{Command: "menu", Description: "📋 Демо-меню"},
+                tgbotapi.BotCommand{Command: "help", Description: "📋 Меню команд"},
+                tgbotapi.BotCommand{Command: "about", Description: "ℹ️ О боте"},
+                tgbotapi.BotCommand{Command: "usecases", Description: "💼 Примеры задач"},
+                tgbotapi.BotCommand{Command: "features", Description: "🧩 Возможности"},
+                tgbotapi.BotCommand{Command: "ping", Description: "✅ Проверка статуса"},
+                tgbotapi.BotCommand{Command: "echo", Description: "🗣️ Повторить текст"},
+        )
+}</span>
+
+func main() <span class="cov0" title="0">{
+        logger := logging.NewFromEnv()
+
+        buildDate := formatBuildDate(BuildDate)
+
+        logger.Info("starting",
+                "version", Version,
+                "commit", Commit,
+                "build_date", buildDate,
+        )
+
+        token := tokenFromEnv()
+        if token == "" </span><span class="cov0" title="0">{
+                log.Fatal("env var TOKEN is not set (see .env)")
+        }</span>
+
+        <span class="cov0" title="0">username := os.Getenv("USERNAME")
+
+        tg, err := telegram.New(token)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("failed to create bot: %v", err)
+        }</span>
+
+        <span class="cov0" title="0">logAuthorized(logger, username, tg.Self.UserName)
+
+        registerBotCommands(tg, logger)
+
+        u := tgbotapi.NewUpdate(0)
+        u.Timeout = longPollTimeoutSeconds()
+
+        updates := tg.GetUpdatesChan(u)
+
+        stop := make(chan os.Signal, 1)
+        signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+        h := bot.Handlers{
+                Bot:    tg,
+                Logger: logger,
+        }
+
+        logger.Info("bot started with long polling, press Ctrl+C to stop")
+
+        for </span><span class="cov0" title="0">{
+                select </span>{
+                case update := &lt;-updates:<span class="cov0" title="0">
+                        applyTelegramUpdate(&amp;h, update)</span>
+
+                case sig := &lt;-stop:<span class="cov0" title="0">
+                        logger.Info("received signal, shutting down", "signal", sig.String())
+                        return</span>
+                }
+        }
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package bot
+
+import (
+        "bytes"
+        "log/slog"
+        "strings"
+        "text/template"
+
+        tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+// TelegramClient — минимум для Send и ответа на callback (answerCallbackQuery).
+type TelegramClient interface {
+        Send(tgbotapi.Chattable) (tgbotapi.Message, error)
+        Request(tgbotapi.Chattable) (*tgbotapi.APIResponse, error)
+}
+
+type Handlers struct {
+        Bot    TelegramClient
+        Logger *slog.Logger
+}
+
+type Command struct {
+        Name        string
+        Description string
+        ParseMode   string
+        BuildText   func(msg *tgbotapi.Message) string
+}
+
+type UseCaseCategory struct {
+        Title string
+        Items []string
+}
+
+var commandButtons = map[string]string{
+        "🚀 Старт":            "start",
+        "📋 Демо-меню":        "menu",
+        "🆘 Помощь":           "help",
+        "ℹ️ О боте":          "about",
+        "💼 Примеры задач":    "usecases",
+        "🧩 Возможности":      "features",
+        "✅ Проверка статуса": "ping",
+        "🗣️ Повторить текст": "echo",
+}
+
+// demoInlineMenuKeyboard — те же пункты, что reply-клавиатура и меню у поля ввода.
+func demoInlineMenuKeyboard() tgbotapi.InlineKeyboardMarkup <span class="cov8" title="1">{
+        return tgbotapi.NewInlineKeyboardMarkup(
+                tgbotapi.NewInlineKeyboardRow(
+                        tgbotapi.NewInlineKeyboardButtonData("🚀 Старт", "cmd:start"),
+                        tgbotapi.NewInlineKeyboardButtonData("📋 Демо-меню", "cmd:menu"),
+                ),
+                tgbotapi.NewInlineKeyboardRow(
+                        tgbotapi.NewInlineKeyboardButtonData("🆘 Помощь", "cmd:help"),
+                        tgbotapi.NewInlineKeyboardButtonData("ℹ️ О боте", "cmd:about"),
+                ),
+                tgbotapi.NewInlineKeyboardRow(
+                        tgbotapi.NewInlineKeyboardButtonData("💼 Примеры задач", "cmd:usecases"),
+                        tgbotapi.NewInlineKeyboardButtonData("🧩 Возможности", "cmd:features"),
+                ),
+                tgbotapi.NewInlineKeyboardRow(
+                        tgbotapi.NewInlineKeyboardButtonData("✅ Проверка статуса", "cmd:ping"),
+                        tgbotapi.NewInlineKeyboardButtonData("🗣️ Повторить текст", "cmd:echo"),
+                ),
+        )
+}</span>
+
+func commandKeyboard() tgbotapi.ReplyKeyboardMarkup <span class="cov8" title="1">{
+        return tgbotapi.NewReplyKeyboard(
+                tgbotapi.NewKeyboardButtonRow(
+                        tgbotapi.NewKeyboardButton("🚀 Старт"),
+                        tgbotapi.NewKeyboardButton("📋 Демо-меню"),
+                ),
+                tgbotapi.NewKeyboardButtonRow(
+                        tgbotapi.NewKeyboardButton("🆘 Помощь"),
+                        tgbotapi.NewKeyboardButton("ℹ️ О боте"),
+                ),
+                tgbotapi.NewKeyboardButtonRow(
+                        tgbotapi.NewKeyboardButton("💼 Примеры задач"),
+                        tgbotapi.NewKeyboardButton("🧩 Возможности"),
+                ),
+                tgbotapi.NewKeyboardButtonRow(
+                        tgbotapi.NewKeyboardButton("✅ Проверка статуса"),
+                        tgbotapi.NewKeyboardButton("🗣️ Повторить текст"),
+                ),
+        )
+}</span>
+
+var useCases = []UseCaseCategory{
+        {
+                Title: "Салон / студия / услуги",
+                Items: []string{
+                        "рассказать про услуги и цены",
+                        "принять заявку или запись",
+                        "отправить напоминание перед визитом",
+                },
+        },
+        {
+                Title: "Онлайн‑курсы / эксперты",
+                Items: []string{
+                        "выдать материалы и инструкции",
+                        "собрать вопросы от учеников",
+                        "аккуратно предлагать доп. продукты",
+                },
+        },
+        {
+                Title: "Малый бизнес",
+                Items: []string{
+                        "ответы на частые вопросы",
+                        "получение контакта для звонка",
+                        "быстрые опросы клиентов",
+                },
+        },
+}
+
+var usecasesTmpl = template.Must(template.New("usecases").Funcs(template.FuncMap{
+        "add1": func(i int) int <span class="cov8" title="1">{ return i + 1 }</span>,
+}).Parse(
+        `*Примеры задач, для которых подходит такой бот:*
+
+{{- range $i, $c := . }}
+{{ add1 $i }}. {{ $c.Title }}:
+{{- range $c.Items }}
+   — {{ . }}
+{{- end }}
+
+{{- end }}
+Идея простая: всё, что менеджер делает руками в переписке, можно постепенно перенести в бота.`,
+))
+
+func renderUseCases() string <span class="cov8" title="1">{
+        var buf bytes.Buffer
+        _ = usecasesTmpl.Execute(&amp;buf, useCases)
+        return buf.String()
+}</span>
+
+func (h Handlers) commandRegistry() map[string]Command <span class="cov8" title="1">{
+        commands := map[string]Command{
+                "start": {
+                        Name:        "start",
+                        Description: "приветствие и краткое объяснение",
+                        BuildText: func(_ *tgbotapi.Message) string </span><span class="cov8" title="1">{
+                                return "Привет! Я демонстрационный Telegram‑бот для бизнеса.\n\n" +
+                                        "Я показываю, как может выглядеть живой продукт для заказчика:\n" +
+                                        "- приветствие новых клиентов\n" +
+                                        "- ответы на типовые вопросы\n" +
+                                        "- сбор заявок прямо в чат\n" +
+                                        "- простая обратная связь.\n\n" +
+                                        "Напиши /help, чтобы увидеть, что я уже умею."
+                        }</span>,
+                },
+                "menu": {
+                        Name:        "menu",
+                        Description: "показать демо-меню кнопками",
+                        BuildText: func(_ *tgbotapi.Message) string <span class="cov8" title="1">{
+                                return "Пожалуйста, выберите пункт меню."
+                        }</span>,
+                },
+                "about": {
+                        Name:        "about",
+                        Description: "чем полезен такой бот для бизнеса",
+                        ParseMode:   tgbotapi.ModeMarkdown,
+                        BuildText: func(_ *tgbotapi.Message) string <span class="cov8" title="1">{
+                                return "Этот бот — пример того, что вы можете получить как продукт.\n\n" +
+                                        "Он подходит, если вам нужно:\n" +
+                                        "- быстро отвечать клиентам 24/7\n" +
+                                        "- разгрузить менеджеров от типовых вопросов\n" +
+                                        "- собирать заявки и контакты прямо в Telegram\n" +
+                                        "- аккуратно подводить людей к покупке или записи.\n\n" +
+                                        "На основе этого бота можно добавить меню, оплату, интеграцию с CRM, базу знаний и любые сценарии под ваш бизнес."
+                        }</span>,
+                },
+                "features": {
+                        Name:        "features",
+                        Description: "какие функции можно добавить (заявки, меню, запись, опросы...)",
+                        ParseMode:   tgbotapi.ModeMarkdown,
+                        BuildText: func(_ *tgbotapi.Message) string <span class="cov8" title="1">{
+                                return "*Какие возможности можно добавить в такого бота:*\n\n" +
+                                        "- Меню с разделами (услуги, цены, контакты)\n" +
+                                        "- Приём заявок: имя, телефон, комментарий → вам в чат или CRM\n" +
+                                        "- Запись на услуги по времени (простое расписание)\n" +
+                                        "- Опросы и быстрый сбор обратной связи\n" +
+                                        "- Отправка файлов, инструкций, прайсов\n" +
+                                        "- Ограниченный доступ по списку клиентов или ролям.\n\n" +
+                                        "Текущая версия — минимальный живой пример. Все перечисленное можно добавить в этот же бот под ваши задачи."
+                        }</span>,
+                },
+                "usecases": {
+                        Name:        "usecases",
+                        Description: "примеры задач, которые можно решить ботом",
+                        ParseMode:   tgbotapi.ModeMarkdown,
+                        BuildText: func(_ *tgbotapi.Message) string <span class="cov8" title="1">{
+                                return renderUseCases()
+                        }</span>,
+                },
+                "ping": {
+                        Name:        "ping",
+                        Description: "проверка, что бот онлайн",
+                        BuildText: func(_ *tgbotapi.Message) string <span class="cov8" title="1">{
+                                return "pong ✅ Бот запущен и готов работать с клиентами."
+                        }</span>,
+                },
+                "echo": {
+                        Name:        "echo",
+                        Description: "повторить ваш текст (пример простой команды)",
+                        BuildText: func(msg *tgbotapi.Message) string <span class="cov8" title="1">{
+                                args := strings.TrimSpace(msg.CommandArguments())
+                                if args == "" </span><span class="cov8" title="1">{
+                                        return "Использование: /echo &lt;текст, который нужно повторить&gt;"
+                                }</span>
+                                <span class="cov8" title="1">return args</span>
+                        },
+                },
+        }
+
+        <span class="cov8" title="1">commands["help"] = Command{
+                Name:        "help",
+                Description: "это сообщение с возможностями",
+                ParseMode:   tgbotapi.ModeMarkdown,
+                BuildText: func(_ *tgbotapi.Message) string </span><span class="cov8" title="1">{
+                        lines := []string{
+                                "Я бот, который помогает автоматизировать общение с клиентами.\n",
+                                "*Что я умею прямо сейчас:*",
+                        }
+
+                        order := []string{"start", "menu", "help", "about", "usecases", "features", "ping", "echo"}
+                        for _, name := range order </span><span class="cov8" title="1">{
+                                c := commands[name]
+                                label := "/" + c.Name
+                                if c.Name == "echo" </span><span class="cov8" title="1">{
+                                        label = "/echo &lt;текст&gt;"
+                                }</span>
+                                <span class="cov8" title="1">lines = append(lines, label+" — "+c.Description)</span>
+                        }
+
+                        <span class="cov8" title="1">lines = append(lines, "", "Если просто написать сообщение — я отвечу тем же текстом. Это демонстрирует, как бот может принимать и обрабатывать любые обращения клиентов.")
+                        return strings.Join(lines, "\n")</span>
+                },
+        }
+
+        <span class="cov8" title="1">return commands</span>
+}
+
+func (h Handlers) HandleMessage(msg *tgbotapi.Message) <span class="cov8" title="1">{
+        chatID := msg.Chat.ID
+
+        if msg.IsCommand() </span><span class="cov8" title="1">{
+                h.HandleCommand(msg)
+                return
+        }</span>
+
+        <span class="cov8" title="1">if cmdName, ok := commandButtons[strings.TrimSpace(msg.Text)]; ok </span><span class="cov8" title="1">{
+                h.sendCommandReply(chatID, cmdName, msg)
+                return
+        }</span>
+
+        <span class="cov8" title="1">reply := tgbotapi.NewMessage(chatID, "Ты написал: "+msg.Text)
+        reply.ReplyMarkup = commandKeyboard()
+        if _, err := h.Bot.Send(reply); err != nil </span><span class="cov8" title="1">{
+                h.Logger.Error("failed to send message", "err", err)
+        }</span>
+}
+
+func (h Handlers) HandleCommand(msg *tgbotapi.Message) <span class="cov8" title="1">{
+        chatID := msg.Chat.ID
+        h.sendCommandReply(chatID, msg.Command(), msg)
+}</span>
+
+func (h Handlers) sendCommandReply(chatID int64, cmdName string, msg *tgbotapi.Message) <span class="cov8" title="1">{
+        cmd, ok := h.commandRegistry()[cmdName]
+        if !ok </span><span class="cov8" title="1">{
+                reply := tgbotapi.NewMessage(chatID, "Неизвестная команда. Напиши /help, чтобы узнать, что я умею.")
+                reply.ReplyMarkup = commandKeyboard()
+                if _, err := h.Bot.Send(reply); err != nil </span><span class="cov8" title="1">{
+                        h.Logger.Error("failed to send unknown command reply", "err", err)
+                }</span>
+                <span class="cov8" title="1">return</span>
+        }
+
+        <span class="cov8" title="1">reply := tgbotapi.NewMessage(chatID, cmd.BuildText(msg))
+        if cmd.ParseMode != "" </span><span class="cov8" title="1">{
+                reply.ParseMode = cmd.ParseMode
+        }</span>
+        <span class="cov8" title="1">if cmdName == "menu" </span><span class="cov8" title="1">{
+                inline := demoInlineMenuKeyboard()
+                reply.ReplyMarkup = &amp;inline
+        }</span> else<span class="cov8" title="1"> {
+                reply.ReplyMarkup = commandKeyboard()
+        }</span>
+        <span class="cov8" title="1">if _, err := h.Bot.Send(reply); err != nil </span><span class="cov8" title="1">{
+                h.Logger.Error("failed to send command reply", "cmd", cmdName, "err", err)
+        }</span>
+}
+
+// HandleCallback — нажатия на inline-кнопки (те же команды, что в основном меню).
+func (h Handlers) HandleCallback(q *tgbotapi.CallbackQuery) <span class="cov8" title="1">{
+        if q == nil || q.Message == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+        <span class="cov8" title="1">data := strings.TrimSpace(q.Data)
+        if !strings.HasPrefix(data, "cmd:") </span><span class="cov8" title="1">{
+                if _, err := h.Bot.Request(tgbotapi.NewCallback(q.ID, "")); err != nil </span><span class="cov8" title="1">{
+                        h.Logger.Error("failed to answer unknown callback", "err", err)
+                }</span>
+                <span class="cov8" title="1">return</span>
+        }
+        <span class="cov8" title="1">cmdName := strings.TrimPrefix(data, "cmd:")
+        if _, err := h.Bot.Request(tgbotapi.NewCallback(q.ID, "")); err != nil </span><span class="cov8" title="1">{
+                h.Logger.Error("failed to answer callback", "err", err)
+        }</span>
+        <span class="cov8" title="1">fake := &amp;tgbotapi.Message{
+                Chat: q.Message.Chat,
+                From: q.From,
+        }
+        h.sendCommandReply(q.Message.Chat.ID, cmdName, fake)</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package logging
+
+import (
+        "io"
+        "log/slog"
+        "os"
+        "strings"
+        "time"
+)
+
+// loadTZEuropeMoscow is swappable in tests (LoadLocation error → time.Local).
+var loadTZEuropeMoscow = func() (*time.Location, error) <span class="cov8" title="1">{
+        return time.LoadLocation("Europe/Moscow")
+}</span>
+
+// NewFromEnv creates a slog.Logger configured via environment variables.
+//
+// - LOG_LEVEL: debug|info (default: info)
+// - LOG_FORMAT: json|text (default: text)
+//
+// Time format is always: 02/01/2006 15:04:05 (Europe/Moscow)
+func NewFromEnv() *slog.Logger <span class="cov8" title="1">{
+        return NewWithWriter(os.Stdout)
+}</span>
+
+// NewWithWriter is like NewFromEnv but writes to w (tests use a buffer).
+func NewWithWriter(w io.Writer) *slog.Logger <span class="cov8" title="1">{
+        level := slog.LevelInfo
+        if strings.EqualFold(strings.TrimSpace(os.Getenv("LOG_LEVEL")), "debug") </span><span class="cov8" title="1">{
+                level = slog.LevelDebug
+        }</span>
+
+        <span class="cov8" title="1">loc, err := loadTZEuropeMoscow()
+        if err != nil </span><span class="cov8" title="1">{
+                loc = time.Local
+        }</span>
+
+        <span class="cov8" title="1">timeReplacer := func(_ []string, a slog.Attr) slog.Attr </span><span class="cov8" title="1">{
+                if a.Key == slog.TimeKey </span><span class="cov8" title="1">{
+                        if t, ok := a.Value.Any().(time.Time); ok </span><span class="cov8" title="1">{
+                                a.Value = slog.StringValue(t.In(loc).Format("02/01/2006 15:04:05"))
+                        }</span>
+                }
+                <span class="cov8" title="1">return a</span>
+        }
+
+        <span class="cov8" title="1">opts := &amp;slog.HandlerOptions{
+                Level:       level,
+                ReplaceAttr: timeReplacer,
+        }
+
+        format := strings.ToLower(strings.TrimSpace(os.Getenv("LOG_FORMAT")))
+        if format == "json" </span><span class="cov8" title="1">{
+                return slog.New(slog.NewJSONHandler(w, opts))
+        }</span>
+        <span class="cov8" title="1">return slog.New(slog.NewTextHandler(w, opts))</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package telegram
+
+import (
+        "net/http"
+
+        tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+type Bot interface {
+        Send(tgbotapi.Chattable) (tgbotapi.Message, error)
+        GetUpdatesChan(tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
+}
+
+// defaultHTTPClient builds the client used by New(); tests may replace it to avoid real HTTP.
+var defaultHTTPClient = func() tgbotapi.HTTPClient <span class="cov0" title="0">{
+        return &amp;http.Client{}
+}</span>
+
+func New(token string) (*tgbotapi.BotAPI, error) <span class="cov8" title="1">{
+        return NewWithHTTPClient(token, defaultHTTPClient())
+}</span>
+
+// NewWithHTTPClient creates a BotAPI using the given HTTP client (injectable for tests).
+func NewWithHTTPClient(token string, client tgbotapi.HTTPClient) (*tgbotapi.BotAPI, error) <span class="cov8" title="1">{
+        return tgbotapi.NewBotAPIWithClient(token, tgbotapi.APIEndpoint, client)
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
