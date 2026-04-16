@@ -1,7 +1,11 @@
 package learning
 
+import "time"
+
 type BlockType string
 type FlowStep string
+type ProgressStatus string
+type SessionState string
 
 const (
 	BlockTheory   BlockType = "theory"
@@ -13,4 +17,65 @@ const (
 	StepAnswer   FlowStep = "answer"
 	StepReview   FlowStep = "review"
 	StepSolution FlowStep = "solution"
+
+	ProgressStatusInProgress ProgressStatus = "in_progress"
+	ProgressStatusCompleted  ProgressStatus = "completed"
+
+	SessionStateActive SessionState = "active"
+	SessionStateClosed SessionState = "closed"
 )
+
+type Section struct {
+	ID          int64
+	Code        string
+	Title       string
+	Description string
+	SortOrder   int
+	IsActive    bool
+}
+
+type Block struct {
+	ID         int64
+	SectionID  int64
+	ChapterID  int64
+	Code       string
+	BlockType  BlockType
+	Title      string
+	SortOrder  int
+	IsActive   bool
+	Difficulty string
+	Tags       []string
+}
+
+type ProgressRecord struct {
+	ID          int64
+	UserID      int64
+	BlockID     int64
+	Status      ProgressStatus
+	CurrentStep FlowStep
+	StartedAt   time.Time
+	UpdatedAt   time.Time
+	CompletedAt *time.Time
+}
+
+type AttemptRecord struct {
+	ID         int64
+	UserID     int64
+	BlockID    int64
+	AnswerText string
+	ReviewText string
+	Score      *float64
+	CreatedAt  time.Time
+}
+
+type SessionRecord struct {
+	ID         int64
+	UserID     int64
+	BlockID    *int64
+	State      SessionState
+	Context    string
+	StartedAt  time.Time
+	UpdatedAt  time.Time
+	ClosedAt   *time.Time
+	LastSeenAt *time.Time
+}

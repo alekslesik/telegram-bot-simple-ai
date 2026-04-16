@@ -15,3 +15,18 @@ func TestValidFlowSteps(t *testing.T) {
 		}
 	}
 }
+
+func TestProgressAndSessionStates(t *testing.T) {
+	if ProgressStatusInProgress != "in_progress" {
+		t.Fatalf("expected in-progress status, got %q", ProgressStatusInProgress)
+	}
+	if ProgressStatusCompleted != "completed" {
+		t.Fatalf("expected completed status, got %q", ProgressStatusCompleted)
+	}
+	if SessionStateActive != "active" {
+		t.Fatalf("expected active session state, got %q", SessionStateActive)
+	}
+	if SessionStateClosed != "closed" {
+		t.Fatalf("expected closed session state, got %q", SessionStateClosed)
+	}
+}
