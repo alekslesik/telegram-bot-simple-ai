@@ -130,6 +130,7 @@ CREATE TABLE ingest_jobs (
 CREATE TABLE raw_chunks (
     id BIGSERIAL PRIMARY KEY,
     ingest_job_id BIGINT NOT NULL REFERENCES ingest_jobs(id) ON DELETE CASCADE,
+    source_pdf TEXT NOT NULL DEFAULT '',
     section_id BIGINT REFERENCES sections(id) ON DELETE SET NULL,
     chapter_id BIGINT REFERENCES chapters(id) ON DELETE SET NULL,
     chunk_index INTEGER NOT NULL,
@@ -145,6 +146,7 @@ CREATE TABLE raw_chunks (
 CREATE TABLE raw_images (
     id BIGSERIAL PRIMARY KEY,
     ingest_job_id BIGINT NOT NULL REFERENCES ingest_jobs(id) ON DELETE CASCADE,
+    source_pdf TEXT NOT NULL DEFAULT '',
     raw_chunk_id BIGINT REFERENCES raw_chunks(id) ON DELETE SET NULL,
     image_index INTEGER NOT NULL,
     page_number INTEGER,

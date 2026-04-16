@@ -117,21 +117,11 @@ test:
 
 ## Apply database migrations
 migrate-up:
-	@if [ -d cmd/migrate ]; then \
-		go run ./cmd/migrate up; \
-	else \
-		echo "cmd/migrate is not implemented yet; Task 3+ must add the migration command before migrate-up can run."; \
-		exit 1; \
-	fi
+	go run ./cmd/migrate up
 
 ## Roll back database migrations
 migrate-down:
-	@if [ -d cmd/migrate ]; then \
-		go run ./cmd/migrate down; \
-	else \
-		echo "cmd/migrate is not implemented yet; Task 3+ must add the migration command before migrate-down can run."; \
-		exit 1; \
-	fi
+	go run ./cmd/migrate down
 
 ## Vulnerability check (govulncheck via go run, same Go as module)
 vuln:
