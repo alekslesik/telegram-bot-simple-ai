@@ -38,7 +38,8 @@ func SortInputFiles(files []InputFile) []InputFile {
 		}
 
 		if !left.ModTime.Equal(right.ModTime) {
-			return left.ModTime.Before(right.ModTime)
+			// Newer files should take priority when capture numbers match.
+			return left.ModTime.After(right.ModTime)
 		}
 		if left.Name != right.Name {
 			return left.Name < right.Name
