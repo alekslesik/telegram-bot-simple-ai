@@ -17,6 +17,8 @@ import (
 	"github.com/alekslesik/telegram-bot-simple/internal/bot"
 	"github.com/alekslesik/telegram-bot-simple/internal/config"
 	"github.com/alekslesik/telegram-bot-simple/internal/logging"
+	contentservice "github.com/alekslesik/telegram-bot-simple/internal/service/content"
+	learningflowservice "github.com/alekslesik/telegram-bot-simple/internal/service/learningflow"
 	"github.com/alekslesik/telegram-bot-simple/internal/storage/postgres"
 	"github.com/alekslesik/telegram-bot-simple/internal/telegram"
 )
@@ -241,6 +243,10 @@ func main() {
 	}
 	defer db.Close()
 
+	contentRepo := postgres.NewContentRepository(db)
+	contentSvc := contentservice.New(contentRepo)
+	learningSvc := learningflowservice.New()
+
 	tg, err := createBotWithRetry(cfg.Token, logger)
 	if err != nil {
 		log.Fatalf("failed to create bot: %v", err)
@@ -262,8 +268,11 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	h := bot.Handlers{
-		Bot:    tg,
-		Logger: logger,
+		Bot:      tg,
+		Logger:   logger,
+		Repo:     contentRepo,
+		Content:  contentSvc,
+		Learning: learningSvc,
 	}
 
 	logger.Info("bot started with long polling, press Ctrl+C to stop")
