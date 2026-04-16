@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -13,7 +14,9 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"github.com/alekslesik/telegram-bot-simple/internal/bot"
+	"github.com/alekslesik/telegram-bot-simple/internal/config"
 	"github.com/alekslesik/telegram-bot-simple/internal/logging"
+	"github.com/alekslesik/telegram-bot-simple/internal/storage/postgres"
 	"github.com/alekslesik/telegram-bot-simple/internal/telegram"
 )
 
@@ -192,6 +195,8 @@ func setMyCommandsConfig() tgbotapi.SetMyCommandsConfig {
 
 func main() {
 	logger := logging.NewFromEnv()
+	cfg := config.FromEnv()
+	ctx := context.Background()
 
 	buildDate := formatBuildDate(BuildDate)
 
@@ -201,19 +206,22 @@ func main() {
 		"build_date", buildDate,
 	)
 
-	token := tokenFromEnv()
-	if token == "" {
+	if cfg.Token == "" {
 		log.Fatal("env var TOKEN is not set (see .env)")
 	}
 
-	username := os.Getenv("USERNAME")
+	db, err := postgres.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect postgres: %v", err)
+	}
+	defer db.Close()
 
-	tg, err := createBotWithRetry(token, logger)
+	tg, err := createBotWithRetry(cfg.Token, logger)
 	if err != nil {
 		log.Fatalf("failed to create bot: %v", err)
 	}
 
-	logAuthorized(logger, username, tg.Self.UserName)
+	logAuthorized(logger, cfg.Username, tg.Self.UserName)
 	probeTelegramAPI(tg, logger, "startup")
 
 	registerBotCommands(tg, logger)
