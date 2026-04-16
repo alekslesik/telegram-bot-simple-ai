@@ -68,12 +68,19 @@ type BlockContent struct {
 	SourcePath      string
 	SourcePage      *int
 	SourceChunkRef  string
+	SourceMetadata  map[string]any
 }
+
+type BlockRelationType string
+
+const (
+	RelationTaskSolution BlockRelationType = "task_solution"
+)
 
 type BlockRelation struct {
 	FromBlockID  int64
 	ToBlockID    int64
-	RelationType string
+	RelationType BlockRelationType
 	SortOrder    int
 }
 

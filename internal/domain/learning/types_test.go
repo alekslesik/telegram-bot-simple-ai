@@ -123,6 +123,10 @@ func TestBlockContentAndRelationDTOShape(t *testing.T) {
 		SourcePath:     "docs/source.pdf",
 		SourcePage:     &page,
 		SourceChunkRef: "chunk-1",
+		SourceMetadata: map[string]any{
+			"page_width":  100,
+			"page_height": 200,
+		},
 	}
 
 	if content.BlockID != 10 {
@@ -138,14 +142,14 @@ func TestBlockContentAndRelationDTOShape(t *testing.T) {
 	relation := BlockRelation{
 		FromBlockID:  10,
 		ToBlockID:    11,
-		RelationType: "next",
+		RelationType: RelationTaskSolution,
 		SortOrder:    1,
 	}
 
 	if relation.FromBlockID != 10 || relation.ToBlockID != 11 {
 		t.Fatal("expected block relation ids to be preserved")
 	}
-	if relation.RelationType != "next" {
+	if relation.RelationType != RelationTaskSolution {
 		t.Fatalf("expected relation type to be preserved, got %q", relation.RelationType)
 	}
 }
