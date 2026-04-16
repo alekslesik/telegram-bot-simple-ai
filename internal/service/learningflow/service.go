@@ -21,8 +21,13 @@ func New() *Service {
 }
 
 func (s *Service) NextStep(blockType learning.BlockType, current learning.FlowStep, action Action) learning.FlowStep {
-	if blockType == learning.BlockTheory || current == learning.StepTheory {
-		return learning.StepTask
+	if current == learning.StepTheory {
+		// Theory-only card should advance only on an explicit "next" action.
+		// For robustness, unknown actions keep the user on the same step.
+		if action == ActionNext {
+			return learning.StepTask
+		}
+		return current
 	}
 
 	switch current {

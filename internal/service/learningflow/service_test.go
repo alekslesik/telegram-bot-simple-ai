@@ -30,8 +30,15 @@ func TestNextStepTransitions(t *testing.T) {
 			name:      "theory always moves to task",
 			blockType: learning.BlockTheory,
 			current:   learning.StepTheory,
-			action:    ActionSkipAnswer,
+			action:    ActionNext,
 			want:      learning.StepTask,
+		},
+		{
+			name:      "unknown action on theory keeps step",
+			blockType: learning.BlockTheory,
+			current:   learning.StepTheory,
+			action:    Action("unknown"),
+			want:      learning.StepTheory,
 		},
 		{
 			name:      "task submit answer moves to review",
