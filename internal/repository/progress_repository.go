@@ -8,19 +8,25 @@ import (
 )
 
 type UserProgress struct {
-	UserID      int64
-	ChapterID   int64
-	CurrentStep learning.FlowStep
-	UpdatedAt   time.Time
+	ID             int64
+	UserID         int64
+	ChapterID      int64
+	CurrentBlockID *int64
+	CurrentStep    learning.FlowStep
+	Status         string
+	StartedAt      time.Time
+	UpdatedAt      time.Time
+	CompletedAt    *time.Time
 }
 
 type UserAttempt struct {
-	ID        int64
-	UserID    int64
-	BlockID   int64
-	Answer    string
-	Verdict   string
-	CreatedAt time.Time
+	ID         int64
+	UserID     int64
+	BlockID    int64
+	AnswerText string
+	ReviewText string
+	Score      *float64
+	CreatedAt  time.Time
 }
 
 type ProgressRepository interface {

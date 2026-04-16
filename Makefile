@@ -30,8 +30,8 @@ help:
 	@echo "  staticcheck   - Run staticcheck (go run, same Go as module)"
 	@echo "  golangci-lint - Run golangci-lint (if installed)"
 	@echo "  test          - Run go tests"
-	@echo "  migrate-up    - Apply database migrations"
-	@echo "  migrate-down  - Roll back database migrations"
+	@echo "  migrate-up    - Apply database migrations (requires cmd/migrate)"
+	@echo "  migrate-down  - Roll back database migrations (requires cmd/migrate)"
 	@echo "  vuln          - Run govulncheck (via go run)"
 	@echo "  docker-build  - Build Docker image"
 	@echo "  docker-run    - Run bot in Docker with .env"
@@ -117,11 +117,21 @@ test:
 
 ## Apply database migrations
 migrate-up:
-	go run ./cmd/migrate up
+	@if [ -d cmd/migrate ]; then \
+		go run ./cmd/migrate up; \
+	else \
+		echo "cmd/migrate is not implemented yet; Task 3+ must add the migration command before migrate-up can run."; \
+		exit 1; \
+	fi
 
 ## Roll back database migrations
 migrate-down:
-	go run ./cmd/migrate down
+	@if [ -d cmd/migrate ]; then \
+		go run ./cmd/migrate down; \
+	else \
+		echo "cmd/migrate is not implemented yet; Task 3+ must add the migration command before migrate-down can run."; \
+		exit 1; \
+	fi
 
 ## Vulnerability check (govulncheck via go run, same Go as module)
 vuln:
