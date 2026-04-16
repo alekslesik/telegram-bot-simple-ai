@@ -103,11 +103,11 @@ var commandButtons = map[string]string{
 }
 
 var learningMenuButtons = map[string]string{
-	"📘 Введение":               "introduction",
-	"📚 Алгоритмы (по порядку)": "algorithms",
-	"🎲 Рандом задача":          "random",
-	"📈 Мой прогресс":           "progress",
-	"⚙️ Настройки":             "settings",
+	"Введение":             "introduction",
+	"Алгоритмы по порядку": "algorithms",
+	"Рандом задача":        "random",
+	"Мой прогресс":         "progress",
+	"Настройки":            "settings",
 }
 
 // demoInlineMenuKeyboard — те же пункты, что reply-клавиатура и меню у поля ввода.
@@ -135,15 +135,15 @@ func demoInlineMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
 func commandKeyboard() tgbotapi.ReplyKeyboardMarkup {
 	return tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📘 Введение"),
-			tgbotapi.NewKeyboardButton("📚 Алгоритмы (по порядку)"),
+			tgbotapi.NewKeyboardButton("Введение"),
+			tgbotapi.NewKeyboardButton("Алгоритмы по порядку"),
 		),
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("🎲 Рандом задача"),
-			tgbotapi.NewKeyboardButton("📈 Мой прогресс"),
+			tgbotapi.NewKeyboardButton("Рандом задача"),
+			tgbotapi.NewKeyboardButton("Мой прогресс"),
 		),
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("⚙️ Настройки"),
+			tgbotapi.NewKeyboardButton("Настройки"),
 		),
 	)
 }
@@ -526,7 +526,8 @@ func (h *Handlers) handleFlowCallback(q *tgbotapi.CallbackQuery, data string) {
 			h.sendInstructionalMessage(q.Message.Chat.ID, "Не удалось показать решение. Попробуйте снова.")
 		}
 	case learning.StepTask:
-		nextBlock, findErr := h.findNextBlockInChapter(context.Background(), currentBlock.ChapterID, currentBlock.ID, learning.BlockTheory, learning.BlockTask)
+		// When we are in StepTask, we must show a task block (not theory).
+		nextBlock, findErr := h.findNextBlockInChapter(context.Background(), currentBlock.ChapterID, currentBlock.ID, learning.BlockTask)
 		if findErr != nil {
 			h.Logger.Error("failed to find next learning block", "block_id", currentBlock.ID, "err", findErr)
 			h.sendInstructionalMessage(q.Message.Chat.ID, "Следующий шаг не найден. Вернитесь в меню и откройте главу заново.")
