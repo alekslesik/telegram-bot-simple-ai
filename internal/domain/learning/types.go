@@ -78,7 +78,6 @@ type SessionRecord struct {
 	FlowStep        FlowStep
 	Mode            string
 	State           SessionState
-	Context         string
 	StartedAt       time.Time
 	UpdatedAt       time.Time
 	ClosedAt        *time.Time

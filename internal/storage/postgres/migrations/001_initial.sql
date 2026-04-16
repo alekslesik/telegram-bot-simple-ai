@@ -110,7 +110,6 @@ CREATE TABLE user_sessions (
     flow_step TEXT NOT NULL DEFAULT 'theory',
     mode TEXT NOT NULL DEFAULT 'learning',
     state TEXT NOT NULL DEFAULT 'active',
-    context JSONB NOT NULL DEFAULT '{}'::JSONB,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     closed_at TIMESTAMPTZ
