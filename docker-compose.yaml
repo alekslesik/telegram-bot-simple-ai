@@ -7,3 +7,11 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: telegram_bot_simple_ai
+      POSTGRES_USER: bot
+      POSTGRES_PASSWORD: bot
+    ports:
+      - "5432:5432"

@@ -60,6 +60,23 @@ cp .env.example .env
 - **`USERNAME`**: username бота (без `@`)
 - **`LOG_LEVEL`**: `debug` или `info` (по умолчанию `info`)
 - **`LOG_FORMAT`**: `json` или `text` (по умолчанию `text`)
+- **`DATABASE_URL`**: строка подключения к Postgres, например `postgres://bot:bot@localhost:5432/telegram_bot_simple_ai?sslmode=disable`
+- **`LLM_*`**: переменные для будущей LLM-интеграции; задаются через `.env`, но в MVP можно оставить значения из примера
+
+### Подготовка контента для ingest
+
+Исходные PDF для загрузки и нарезки контента хранятся в:
+
+- `content/raw/introduction`
+- `content/raw/algorithms/<chapter-folder>`
+
+Если внутри главы файлы названы как `FireShot Capture N ...`, то ingest сначала сортирует их по номеру `N`, а если номера совпали или шаблон не найден, использует `mtime` как запасной порядок.
+
+Запуск подготовки:
+
+```bash
+make ingest
+```
 
 ### Запуск локально
 

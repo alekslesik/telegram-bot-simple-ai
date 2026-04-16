@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -48,6 +49,7 @@ func (f fakeFlowLearningService) NextStep(_ learning.BlockType, _ learning.FlowS
 }
 
 type fakeFlowContentRepository struct {
+	chapters      map[int64]learning.Chapter
 	blocks        map[int64]learning.Block
 	chapterBlocks map[int64][]learning.Block
 }
@@ -56,7 +58,10 @@ func (f fakeFlowContentRepository) GetSectionByCode(context.Context, string) (le
 	return learning.Section{}, nil
 }
 
-func (f fakeFlowContentRepository) GetChapter(context.Context, int64) (learning.Chapter, error) {
+func (f fakeFlowContentRepository) GetChapter(_ context.Context, chapterID int64) (learning.Chapter, error) {
+	if chapter, ok := f.chapters[chapterID]; ok {
+		return chapter, nil
+	}
 	return learning.Chapter{}, nil
 }
 
@@ -186,6 +191,52 @@ func TestHandlers_HandleCallback_FlowNextFromTheoryShowsTask(t *testing.T) {
 	}
 	if !strings.Contains(cfg.Text, "TaskMD: solve the example") {
 		t.Fatalf("expected task payload text, got %q", cfg.Text)
+	}
+}
+
+func TestHandlers_RenderBlockStep_LogsLearningFlowStep(t *testing.T) {
+	var logs bytes.Buffer
+
+	bot := &fakeFlowTelegram{}
+	repo := fakeFlowContentRepository{
+		chapters: map[int64]learning.Chapter{
+			3: {ID: 3, Code: "two-pointers", Title: "Two Pointers"},
+		},
+	}
+	contentSvc := fakeFlowContentService{
+		payloads: map[int64]contentservice.BlockPayload{
+			11: {
+				Title:     "Task",
+				BlockType: learning.BlockTask,
+				TaskMD:    "TaskMD: solve the example",
+			},
+		},
+	}
+
+	h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepTask})
+	h.Logger = slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{}))
+
+	err := h.renderBlockStep(context.Background(), 11, 2002, learning.Block{
+		ID:        11,
+		ChapterID: 3,
+		BlockType: learning.BlockTask,
+		Title:     "Task",
+	}, learning.StepTask)
+	if err != nil {
+		t.Fatalf("renderBlockStep returned error: %v", err)
+	}
+
+	got := logs.String()
+	for _, want := range []string{
+		`"msg":"learning flow step"`,
+		`"user_id":2002`,
+		`"chapter":"two-pointers"`,
+		`"block_id":11`,
+		`"step":"task"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected logs to contain %s, got %q", want, got)
+		}
 	}
 }
 

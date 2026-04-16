@@ -635,6 +635,13 @@ func (h *Handlers) renderBlockStep(ctx context.Context, chatID, userID int64, bl
 		return fmt.Errorf("send block message %d: %w", block.ID, err)
 	}
 
+	h.Logger.Info("learning flow step",
+		"user_id", userID,
+		"chapter", h.flowChapterLogValue(ctx, block.ChapterID),
+		"block_id", block.ID,
+		"step", step,
+	)
+
 	lastAnswer := ""
 	if existing, ok := h.ensureFlowStateStore().Get(userID); ok && existing.BlockID == block.ID {
 		lastAnswer = existing.LastAnswer
@@ -648,6 +655,23 @@ func (h *Handlers) renderBlockStep(ctx context.Context, chatID, userID int64, bl
 	})
 
 	return nil
+}
+
+func (h *Handlers) flowChapterLogValue(ctx context.Context, chapterID int64) any {
+	if h.Repo == nil {
+		return chapterID
+	}
+
+	chapter, err := h.Repo.GetChapter(ctx, chapterID)
+	if err != nil {
+		return chapterID
+	}
+
+	if code := strings.TrimSpace(chapter.Code); code != "" {
+		return code
+	}
+
+	return chapterID
 }
 
 func renderStepMessage(blockID int64, payload contentservice.BlockPayload, step learning.FlowStep) (string, tgbotapi.InlineKeyboardMarkup) {
