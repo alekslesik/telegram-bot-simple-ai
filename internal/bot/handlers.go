@@ -364,8 +364,10 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 	defer cancel()
 
 	answer, err := h.AI.ExplainTheory(ctx, llmservice.TheoryInput{
-		Theory:   "Пользователь хочет свободный диалог в тестовом режиме.",
-		Question: msg.Text,
+		// Free-form chat mode: pass only the user's message, without fixed "theory" text.
+		// This avoids templated/stub-like answers that always explain the same phrase.
+		Theory:   "",
+		Question: strings.TrimSpace(msg.Text),
 	})
 	if err != nil {
 		h.Logger.Error("failed to get ai chat response", "user_id", userID, "err", err)
