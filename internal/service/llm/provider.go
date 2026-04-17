@@ -6,6 +6,7 @@ type Provider interface {
 	ReviewAnswer(ctx context.Context, input ReviewInput) (ReviewResult, error)
 	ExplainTheory(ctx context.Context, input TheoryInput) (string, error)
 	ExplainSolution(ctx context.Context, input SolutionInput) (string, error)
+	Chat(ctx context.Context, input ChatInput) (string, error)
 }
 
 type ReviewInput struct {
@@ -26,4 +27,8 @@ type TheoryInput struct {
 type SolutionInput struct {
 	Task     string
 	Solution string
+}
+
+type ChatInput struct {
+	Message string
 }

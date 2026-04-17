@@ -68,6 +68,10 @@ func (a *OpenAICompatible) ExplainSolution(ctx context.Context, input SolutionIn
 	return a.chatCompletion(ctx, solutionSystemPrompt, formatSolutionPrompt(input))
 }
 
+func (a *OpenAICompatible) Chat(ctx context.Context, input ChatInput) (string, error) {
+	return a.chatCompletion(ctx, chatSystemPrompt, formatChatPrompt(input))
+}
+
 func (a *OpenAICompatible) chatCompletion(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	requestBody := struct {
 		Model    string        `json:"model"`
@@ -145,6 +149,7 @@ const (
 	reviewSystemPrompt   = "You are a Go interview coach. Review the user's answer and reply in concise markdown."
 	theorySystemPrompt   = "You are a Go interview coach. Explain the requested theory in concise markdown."
 	solutionSystemPrompt = "You are a Go interview coach. Explain the reference solution in concise markdown."
+	chatSystemPrompt     = "You are a helpful assistant for Go interview preparation. Always respond in Russian, in plain text only (no markdown, no headings, no bullet lists). Keep answers concise and conversational. If the user greets you, greet back and ask how you can help."
 )
 
 func formatReviewPrompt(input ReviewInput) string {
@@ -170,4 +175,8 @@ func formatSolutionPrompt(input SolutionInput) string {
 		strings.TrimSpace(input.Task),
 		strings.TrimSpace(input.Solution),
 	)
+}
+
+func formatChatPrompt(input ChatInput) string {
+	return strings.TrimSpace(input.Message)
 }
