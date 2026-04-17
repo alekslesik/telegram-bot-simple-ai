@@ -111,11 +111,13 @@ type fakeAIProvider struct {
 	reply     string
 	err       error
 	lastInput llmservice.ChatInput
+	inputs    []llmservice.ChatInput
 	delay     time.Duration
 }
 
 func (f *fakeAIProvider) Chat(ctx context.Context, input llmservice.ChatInput) (string, error) {
 	f.lastInput = input
+	f.inputs = append(f.inputs, input)
 	if f.delay > 0 {
 		select {
 		case <-time.After(f.delay):
@@ -464,8 +466,8 @@ func TestHandlers_HandleMessage_AIChatModeRepliesWithAI(t *testing.T) {
 	if ai.lastInput.Message != "как работает map в go?" {
 		t.Fatalf("expected chat message to equal user text, got %q", ai.lastInput.Message)
 	}
-	if cfg.ParseMode != "" {
-		t.Fatalf("expected plain text parse mode, got %q", cfg.ParseMode)
+	if cfg.ParseMode != tgbotapi.ModeMarkdown {
+		t.Fatalf("expected markdown parse mode, got %q", cfg.ParseMode)
 	}
 }
 
@@ -512,9 +514,9 @@ func TestHandlers_HandleMessage_AIChatModeSlowReplySendsThinkingFirst(t *testing
 	}
 }
 
-func TestHandlers_HandleMessage_AIChatModeRejectsOffTopic(t *testing.T) {
+func TestHandlers_HandleMessage_AIChatModeAllowsGeneralQuestion(t *testing.T) {
 	bot := &fakeFlowTelegram{}
-	ai := &fakeAIProvider{reply: "unused"}
+	ai := &fakeAIProvider{reply: "Краткий ответ"}
 	h := newFlowTestHandlers(
 		bot,
 		fakeFlowContentRepository{},
@@ -525,7 +527,7 @@ func TestHandlers_HandleMessage_AIChatModeRejectsOffTopic(t *testing.T) {
 	h.setAIChatMode(777, true)
 
 	h.HandleMessage(&tgbotapi.Message{
-		Text: "посоветуй фильм на вечер",
+		Text: "как лучше организовать процесс обучения?",
 		Chat: &tgbotapi.Chat{ID: 51},
 		From: &tgbotapi.User{ID: 777},
 	})
@@ -537,11 +539,11 @@ func TestHandlers_HandleMessage_AIChatModeRejectsOffTopic(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected MessageConfig, got %T", bot.sent[len(bot.sent)-1])
 	}
-	if !strings.Contains(strings.ToLower(cfg.Text), "я отвечаю на it-темы") {
-		t.Fatalf("expected off-topic restriction text, got %q", cfg.Text)
+	if strings.TrimSpace(cfg.Text) != "Краткий ответ" {
+		t.Fatalf("expected provider response, got %q", cfg.Text)
 	}
-	if ai.lastInput.Message != "" {
-		t.Fatalf("expected provider not to be called for off-topic request, got %q", ai.lastInput.Message)
+	if ai.lastInput.Message != "как лучше организовать процесс обучения?" {
+		t.Fatalf("expected provider to be called with user message, got %q", ai.lastInput.Message)
 	}
 }
 
@@ -583,20 +585,47 @@ func TestHandlers_HandleMessage_AIChatModeEnforcesDailyLimit(t *testing.T) {
 	}
 }
 
-func TestIsAllowedAIChatTopic(t *testing.T) {
-	tests := []struct {
-		in   string
-		want bool
-	}{
-		{in: "привет", want: true},
-		{in: "что такое interface в go", want: true},
-		{in: "какие возможности у этого бота?", want: true},
-		{in: "погода завтра", want: false},
+func TestHandlers_HandleMessage_AIChatModePassesHistoryOnSecondMessage(t *testing.T) {
+	bot := &fakeFlowTelegram{}
+	ai := &fakeAIProvider{
+		reply: "ok",
 	}
-	for _, tt := range tests {
-		if got := isAllowedAIChatTopic(tt.in); got != tt.want {
-			t.Fatalf("isAllowedAIChatTopic(%q) = %v, want %v", tt.in, got, tt.want)
-		}
+	h := newFlowTestHandlers(
+		bot,
+		fakeFlowContentRepository{},
+		fakeFlowContentService{},
+		fakeFlowLearningService{},
+		ai,
+	)
+	h.setAIChatMode(777, true)
+
+	h.HandleMessage(&tgbotapi.Message{
+		Text: "первый вопрос",
+		Chat: &tgbotapi.Chat{ID: 51},
+		From: &tgbotapi.User{ID: 777},
+	})
+	h.HandleMessage(&tgbotapi.Message{
+		Text: "второй вопрос",
+		Chat: &tgbotapi.Chat{ID: 51},
+		From: &tgbotapi.User{ID: 777},
+	})
+
+	if len(ai.inputs) != 2 {
+		t.Fatalf("expected 2 ai calls, got %d", len(ai.inputs))
+	}
+
+	second := ai.inputs[1]
+	if second.Message != "второй вопрос" {
+		t.Fatalf("expected second message to be passed through, got %q", second.Message)
+	}
+	if len(second.History) != 2 {
+		t.Fatalf("expected exactly one previous exchange in history, got %d messages", len(second.History))
+	}
+	if second.History[0].Role != "user" || second.History[0].Content != "первый вопрос" {
+		t.Fatalf("unexpected first history item: %#v", second.History[0])
+	}
+	if second.History[1].Role != "assistant" || strings.TrimSpace(second.History[1].Content) != "ok" {
+		t.Fatalf("unexpected second history item: %#v", second.History[1])
 	}
 }
 
@@ -621,5 +650,16 @@ func TestParseFlowCallbackData_MalformedInputsReturnOkFalse(t *testing.T) {
 				t.Fatalf("expected ok=false for input %q", tt.in)
 			}
 		})
+	}
+}
+
+func TestNormalizeAIChatCodeFences_RewritesNonGoFences(t *testing.T) {
+	in := "```python\nprint('hello')\n```\n\n```javascript\nconsole.log('hi')\n```"
+	got := normalizeAIChatCodeFences(in)
+	if strings.Contains(got, "```python") || strings.Contains(got, "```javascript") {
+		t.Fatalf("expected non-go code fences to be replaced, got %q", got)
+	}
+	if strings.Count(got, "```go") != 2 {
+		t.Fatalf("expected both fences to be go, got %q", got)
 	}
 }

@@ -27,16 +27,18 @@ type TelegramClient interface {
 }
 
 type Handlers struct {
-	Bot              TelegramClient
-	Logger           *slog.Logger
-	Repo             repository.ContentRepository
-	Content          flowContentBuilder
-	Learning         flowNavigator
-	AI               aiChatProvider
-	AIChatDailyLimit int
-	AIThinkingDelay  time.Duration
-	State            flowStateStore
-	quotaStore       *inMemoryAIQuotaStore
+	Bot                   TelegramClient
+	Logger                *slog.Logger
+	Repo                  repository.ContentRepository
+	Content               flowContentBuilder
+	Learning              flowNavigator
+	AI                    aiChatProvider
+	AIChatDailyLimit      int
+	AIChatHistoryMessages int
+	AIThinkingDelay       time.Duration
+	State                 flowStateStore
+	quotaStore            *inMemoryAIQuotaStore
+	chatHistoryStore      *inMemoryAIChatHistoryStore
 }
 
 type flowContentBuilder interface {
@@ -79,6 +81,11 @@ type inMemoryAIQuotaStore struct {
 	byUser map[int64]aiQuotaState
 }
 
+type inMemoryAIChatHistoryStore struct {
+	mu     sync.Mutex
+	byUser map[int64][]llmservice.ChatMessage
+}
+
 func newInMemoryFlowStateStore() *inMemoryFlowStateStore {
 	return &inMemoryFlowStateStore{
 		byUser: make(map[int64]flowState),
@@ -88,6 +95,12 @@ func newInMemoryFlowStateStore() *inMemoryFlowStateStore {
 func newInMemoryAIQuotaStore() *inMemoryAIQuotaStore {
 	return &inMemoryAIQuotaStore{
 		byUser: make(map[int64]aiQuotaState),
+	}
+}
+
+func newInMemoryAIChatHistoryStore() *inMemoryAIChatHistoryStore {
+	return &inMemoryAIChatHistoryStore{
+		byUser: make(map[int64][]llmservice.ChatMessage),
 	}
 }
 
@@ -131,6 +144,44 @@ func (s *inMemoryAIQuotaStore) Consume(userID int64, limit int, now time.Time) (
 	return limit - state.Count, true
 }
 
+func (s *inMemoryAIChatHistoryStore) Tail(userID int64, maxMessages int) []llmservice.ChatMessage {
+	if maxMessages <= 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	history := s.byUser[userID]
+	if len(history) == 0 {
+		return nil
+	}
+	start := 0
+	if len(history) > maxMessages {
+		start = len(history) - maxMessages
+	}
+	out := make([]llmservice.ChatMessage, len(history[start:]))
+	copy(out, history[start:])
+	return out
+}
+
+func (s *inMemoryAIChatHistoryStore) AppendExchange(userID int64, userMessage, assistantMessage string, maxMessages int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	history := append(s.byUser[userID],
+		llmservice.ChatMessage{Role: "user", Content: strings.TrimSpace(userMessage)},
+		llmservice.ChatMessage{Role: "assistant", Content: strings.TrimSpace(assistantMessage)},
+	)
+	if maxMessages > 0 && len(history) > maxMessages {
+		history = history[len(history)-maxMessages:]
+	}
+	s.byUser[userID] = history
+}
+
+func (s *inMemoryAIChatHistoryStore) Clear(userID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.byUser, userID)
+}
+
 type Command struct {
 	Name        string
 	Description string
@@ -165,23 +216,7 @@ var learningMenuButtons = map[string]string{
 
 const defaultAIChatDailyLimit = 30
 const defaultAIThinkingDelay = 3 * time.Second
-
-var aiChatAllowedTopicKeywords = []string{
-	"go", "golang", "алгоритм", "задач", "код", "программ", "собесед", "интерв",
-	"backend", "sql", "postgres", "database", "db", "api", "http", "grpc",
-	"struct", "interface", "slice", "map", "канал", "goroutine", "concurrency",
-	"runtime", "memory", "gc", "pointer", "oop", "docker", "git", "linux",
-	"kubernetes", "system design", "leetcode",
-	"it", "айти", "тех", "технолог", "software", "developer", "dev", "frontend",
-	"fullstack", "devops", "ci/cd", "архитектур", "паттерн", "ооп", "бд", "данных",
-	"javascript", "typescript", "python", "java", "c#", "c++", "php", "rust",
-	"react", "node", "nodejs", "cloud", "aws", "gcp", "azure", "kafka", "redis",
-	"телеграм", "telegram", "бот", "возможност", "функционал",
-}
-
-var aiChatGreetingKeywords = []string{
-	"привет", "здравств", "добрый", "hello", "hi", "hey",
-}
+const defaultAIChatHistoryMessages = 12
 
 // demoInlineMenuKeyboard — те же пункты, что reply-клавиатура и меню у поля ввода.
 func demoInlineMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
@@ -425,10 +460,8 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 	}
 
 	userText := strings.TrimSpace(msg.Text)
-	if !isAllowedAIChatTopic(userText) {
-		h.sendInstructionalMessage(msg.Chat.ID, "Я отвечаю на IT-темы: программирование, алгоритмы, обучение, собеседования и вопросы о возможностях бота. Непрофильные темы (например питание/медицина) я не обрабатываю.")
-		return true
-	}
+	historyLimit := h.effectiveAIChatHistoryMessages()
+	history := h.ensureAIChatHistoryStore().Tail(userID, historyLimit)
 
 	limit := h.effectiveAIChatDailyLimit()
 	remaining, ok := h.ensureAIQuotaStore().Consume(userID, limit, time.Now())
@@ -447,6 +480,7 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 	go func() {
 		answer, err := h.AI.Chat(ctx, llmservice.ChatInput{
 			Message: userText,
+			History: history,
 		})
 		responseCh <- struct {
 			answer string
@@ -486,12 +520,20 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 	if replyText == "" {
 		replyText = "ИИ не вернул текст. Попробуйте переформулировать вопрос."
 	}
+	h.ensureAIChatHistoryStore().AppendExchange(userID, userText, replyText, historyLimit)
+	replyText = normalizeAIChatCodeFences(replyText)
 
 	reply := tgbotapi.NewMessage(msg.Chat.ID, replyText)
+	reply.ParseMode = tgbotapi.ModeMarkdown
 	reply.ReplyMarkup = commandKeyboard()
 	if _, err := h.Bot.Send(reply); err != nil {
-		h.Logger.Error("failed to send ai chat response", "user_id", userID, "err", err)
-		return true
+		h.Logger.Error("failed to send ai chat response in markdown mode; retrying plain text", "user_id", userID, "err", err)
+		plain := tgbotapi.NewMessage(msg.Chat.ID, replyText)
+		plain.ReplyMarkup = commandKeyboard()
+		if _, plainErr := h.Bot.Send(plain); plainErr != nil {
+			h.Logger.Error("failed to send ai chat response", "user_id", userID, "err", plainErr)
+			return true
+		}
 	}
 
 	h.Logger.Info("ai chat response sent", "user_id", userID, "remaining_daily_quota", remaining)
@@ -570,6 +612,13 @@ func (h *Handlers) ensureAIQuotaStore() *inMemoryAIQuotaStore {
 	return h.quotaStore
 }
 
+func (h *Handlers) ensureAIChatHistoryStore() *inMemoryAIChatHistoryStore {
+	if h.chatHistoryStore == nil {
+		h.chatHistoryStore = newInMemoryAIChatHistoryStore()
+	}
+	return h.chatHistoryStore
+}
+
 func (h *Handlers) effectiveAIChatDailyLimit() int {
 	if h.AIChatDailyLimit > 0 {
 		return h.AIChatDailyLimit
@@ -582,6 +631,13 @@ func (h *Handlers) effectiveAIThinkingDelay() time.Duration {
 		return h.AIThinkingDelay
 	}
 	return defaultAIThinkingDelay
+}
+
+func (h *Handlers) effectiveAIChatHistoryMessages() int {
+	if h.AIChatHistoryMessages > 0 {
+		return h.AIChatHistoryMessages
+	}
+	return defaultAIChatHistoryMessages
 }
 
 func (h *Handlers) captureAnswerText(msg *tgbotapi.Message) bool {
@@ -631,7 +687,7 @@ func (h *Handlers) handleLearningMenuSelection(msg *tgbotapi.Message, sectionCod
 		enabled := !h.aiChatModeEnabled(userID)
 		h.setAIChatMode(userID, enabled)
 		if enabled {
-			h.sendInstructionalMessage(msg.Chat.ID, fmt.Sprintf("Режим ИИ-чата включен.\nТемы: IT, программирование, алгоритмы, обучение, собеседования и вопросы о боте.\nЛимит: %d запросов в сутки на пользователя.\nЧтобы выключить режим, нажмите «🤖 ИИ-чат (тест)» еще раз.", h.effectiveAIChatDailyLimit()))
+			h.sendInstructionalMessage(msg.Chat.ID, fmt.Sprintf("Режим ИИ-чата включен.\nМожете задавать вопросы про обучение, подготовку к собеседованиям, IT и работу бота.\nЛимит: %d запросов в сутки на пользователя.\nЧтобы выключить режим, нажмите «🤖 ИИ-чат (тест)» еще раз.", h.effectiveAIChatDailyLimit()))
 		} else {
 			h.sendInstructionalMessage(msg.Chat.ID, "Режим ИИ-чата выключен.")
 		}
@@ -659,28 +715,9 @@ func (h *Handlers) setAIChatMode(userID int64, enabled bool) {
 	}
 	state.AIChatMode = enabled
 	store.Save(userID, state)
-}
-
-func isAllowedAIChatTopic(text string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(text))
-	if normalized == "" {
-		return false
+	if !enabled {
+		h.ensureAIChatHistoryStore().Clear(userID)
 	}
-
-	if containsAnyKeyword(normalized, aiChatGreetingKeywords) {
-		return true
-	}
-
-	return containsAnyKeyword(normalized, aiChatAllowedTopicKeywords)
-}
-
-func containsAnyKeyword(text string, keywords []string) bool {
-	for _, keyword := range keywords {
-		if strings.Contains(text, keyword) {
-			return true
-		}
-	}
-	return false
 }
 
 func (h *Handlers) startSection(ctx context.Context, chatID, userID int64, sectionCode string) error {
@@ -977,6 +1014,28 @@ func solutionInlineKeyboard(blockID int64) tgbotapi.InlineKeyboardMarkup {
 
 func flowCallbackData(action learningflowservice.Action, blockID int64) string {
 	return fmt.Sprintf("flow:%s:%d", action, blockID)
+}
+
+func normalizeAIChatCodeFences(text string) string {
+	normalized := strings.TrimSpace(text)
+	if normalized == "" {
+		return normalized
+	}
+	replacer := strings.NewReplacer(
+		"```python", "```go",
+		"```py", "```go",
+		"```javascript", "```go",
+		"```js", "```go",
+		"```typescript", "```go",
+		"```ts", "```go",
+		"```java", "```go",
+		"```c#", "```go",
+		"```c++", "```go",
+		"```cpp", "```go",
+		"```rust", "```go",
+		"```php", "```go",
+	)
+	return replacer.Replace(normalized)
 }
 
 func (h *Handlers) findNextBlockInChapter(ctx context.Context, chapterID, currentBlockID int64, allowedTypes ...learning.BlockType) (learning.Block, error) {

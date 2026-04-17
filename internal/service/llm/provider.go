@@ -31,4 +31,10 @@ type SolutionInput struct {
 
 type ChatInput struct {
 	Message string
+	History []ChatMessage
+}
+
+type ChatMessage struct {
+	Role    string
+	Content string
 }
