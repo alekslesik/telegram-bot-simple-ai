@@ -12,6 +12,7 @@ func TestFromEnvReadsPostgresAndLLM(t *testing.T) {
 	t.Setenv("LLM_MODEL", "deepseek-chat")
 	t.Setenv("LLM_TIMEOUT_SEC", "45")
 	t.Setenv("AI_CHAT_DAILY_LIMIT", "30")
+	t.Setenv("AI_CHAT_THINKING_DELAY_MS", "3000")
 
 	cfg := FromEnv()
 
@@ -23,5 +24,8 @@ func TestFromEnvReadsPostgresAndLLM(t *testing.T) {
 	}
 	if cfg.AIChatDailyLimit != 30 {
 		t.Fatalf("expected ai chat daily limit to be parsed, got %d", cfg.AIChatDailyLimit)
+	}
+	if cfg.AIChatThinkingDelay != 3*time.Second {
+		t.Fatalf("expected ai thinking delay to be parsed, got %s", cfg.AIChatThinkingDelay)
 	}
 }

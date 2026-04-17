@@ -16,7 +16,8 @@ For each user task, always create a feature branch, commit with Conventional Com
 
 PR ownership preference:
 - Prepare branches/commits/PRs, but do **not** merge PRs unless the user explicitly asks.
-- User preference override: never merge PRs as the agent. Always stop at green CI and hand off the PR link for manual merge by the user.
+- User preference override: if the user explicitly asks for a **release** (for example: `release`, `релиз`, `сделай релиз`), the agent may complete the PR workflow end-to-end, including merge **after** required CI is green.
+- If release intent is not explicit, stop at green CI and hand off the PR link for manual merge by the user.
 - In each PR body, include a concise changelog and a `Release notes draft` section.
 - Before opening every PR, run `make preprod`.
 - After local runtime verification, always stop started containers with `make docker-compose-down`.

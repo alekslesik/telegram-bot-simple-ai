@@ -309,6 +309,7 @@ func main() {
 		Learning:         learningSvc,
 		AI:               aiProvider,
 		AIChatDailyLimit: cfg.AIChatDailyLimit,
+		AIThinkingDelay:  cfg.AIChatThinkingDelay,
 	}
 
 	logger.Info("bot started with long polling, press Ctrl+C to stop")
