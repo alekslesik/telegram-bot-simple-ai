@@ -333,7 +333,6 @@ func TestLearningMenuButtonsRouteToExpectedSectionCodes(t *testing.T) {
 		label           string
 		expectedSection string
 	}{
-		{label: "Введение", expectedSection: "introduction"},
 		{label: "Алгоритмы по порядку", expectedSection: "algorithms"},
 	}
 
@@ -361,6 +360,31 @@ func TestLearningMenuButtonsRouteToExpectedSectionCodes(t *testing.T) {
 		if repo.lastSectionCode != tt.expectedSection {
 			t.Fatalf("for label %q expected section %q, got %q", tt.label, tt.expectedSection, repo.lastSectionCode)
 		}
+	}
+}
+
+func TestHandlers_HandleLearningMenuSelection_IntroductionShowsStaticMessage(t *testing.T) {
+	bot := &fakeFlowTelegram{}
+	h := newFlowTestHandlers(bot, fakeFlowContentRepository{}, fakeFlowContentService{}, fakeFlowLearningService{}, nil)
+	msg := &tgbotapi.Message{
+		Chat: &tgbotapi.Chat{ID: 99},
+		From: &tgbotapi.User{ID: 123},
+	}
+
+	h.handleLearningMenuSelection(msg, "introduction")
+
+	if len(bot.sent) == 0 {
+		t.Fatal("expected introduction message to be sent")
+	}
+	cfg, ok := bot.sent[len(bot.sent)-1].(tgbotapi.MessageConfig)
+	if !ok {
+		t.Fatalf("expected MessageConfig, got %T", bot.sent[len(bot.sent)-1])
+	}
+	if !strings.Contains(cfg.Text, "Введение") {
+		t.Fatalf("expected introduction title, got %q", cfg.Text)
+	}
+	if cfg.ParseMode != tgbotapi.ModeMarkdown {
+		t.Fatalf("expected markdown parse mode, got %q", cfg.ParseMode)
 	}
 }
 

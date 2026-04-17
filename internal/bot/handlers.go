@@ -671,7 +671,10 @@ func (h *Handlers) captureAnswerText(msg *tgbotapi.Message) bool {
 func (h *Handlers) handleLearningMenuSelection(msg *tgbotapi.Message, sectionCode string) {
 	userID := messageUserID(msg)
 	switch sectionCode {
-	case "introduction", "algorithms":
+	case "introduction":
+		h.setAIChatMode(userID, false)
+		h.sendIntroduction(msg.Chat.ID)
+	case "algorithms":
 		h.setAIChatMode(userID, false)
 		if err := h.startSection(context.Background(), msg.Chat.ID, messageUserID(msg), sectionCode); err != nil {
 			h.sendInstructionalMessage(msg.Chat.ID, "Не удалось открыть раздел. Попробуйте еще раз чуть позже.")
@@ -1068,5 +1071,30 @@ func (h *Handlers) sendInstructionalMessage(chatID int64, text string) {
 	reply.ReplyMarkup = commandKeyboard()
 	if _, err := h.Bot.Send(reply); err != nil {
 		h.Logger.Error("failed to send instructional message", "err", err)
+	}
+}
+
+func (h *Handlers) sendIntroduction(chatID int64) {
+	text := strings.Join([]string{
+		"*Введение*",
+		"",
+		"Здесь мы выравниваем базу перед задачами:",
+		"- как устроен процесс подготовки к собеседованиям",
+		"- как оценивать сложность (Big O) и выбирать структуру данных",
+		"- как разбирать задачу: идея -> код -> проверка краевых случаев",
+		"",
+		"Рекомендуемый темп:",
+		"1) коротко прочитать теорию",
+		"2) решить задачу самостоятельно",
+		"3) сравнить с эталоном и выписать выводы",
+		"",
+		"Когда будете готовы, переходите в «Алгоритмы по порядку».",
+	}, "\n")
+
+	reply := tgbotapi.NewMessage(chatID, text)
+	reply.ParseMode = tgbotapi.ModeMarkdown
+	reply.ReplyMarkup = commandKeyboard()
+	if _, err := h.Bot.Send(reply); err != nil {
+		h.Logger.Error("failed to send introduction", "err", err)
 	}
 }

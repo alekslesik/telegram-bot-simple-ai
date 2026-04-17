@@ -78,6 +78,12 @@ cp .env.example .env
 make ingest
 ```
 
+Если нужно выполнить ingest внутри Docker (без локального Go toolchain):
+
+```bash
+docker compose --profile tools run --rm ingest
+```
+
 ### Запуск локально
 
 ```bash
@@ -243,3 +249,12 @@ IMAGE_TAG=v1.2.3 docker compose -f docker-compose.prod.yaml up -d
 ```
 
 Бот использует long polling, поэтому обычно не требуется публичный HTTPS и настройка webhook — достаточно, чтобы сервер имел доступ в интернет.
+
+### Ingest на VPS без исходников
+
+На прод-сервере можно запускать ingest через тот же release-образ (не нужен `make` и не нужны исходники проекта):
+
+```bash
+cd /opt/bots/telegram-bot-simple-ai
+IMAGE_TAG=v1.2.3 docker compose -f docker-compose.prod.yaml --profile tools run --rm ingest
+```
