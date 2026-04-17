@@ -154,9 +154,9 @@ func (r *ContentRepository) GetBlockContent(ctx context.Context, blockID int64) 
 			theory_md,
 			task_md,
 			solution_md,
-			image_urls,
+			COALESCE(array_to_json(image_urls), '[]'::json),
 			difficulty,
-			tags,
+			COALESCE(array_to_json(tags), '[]'::json),
 			language_code,
 			source_type,
 			source_path,
@@ -171,15 +171,17 @@ func (r *ContentRepository) GetBlockContent(ctx context.Context, blockID int64) 
 
 	var content learning.BlockContent
 	var sourcePage sql.NullInt64
+	var imageURLsJSON []byte
+	var tagsJSON []byte
 	var sourceMetadata []byte
 	if err := row.Scan(
 		&content.BlockID,
 		&content.TheoryMD,
 		&content.TaskMD,
 		&content.SolutionMD,
-		&content.ImageURLs,
+		&imageURLsJSON,
 		&content.Difficulty,
-		&content.Tags,
+		&tagsJSON,
 		&content.LanguageCode,
 		&content.SourceType,
 		&content.SourcePath,
@@ -193,6 +195,18 @@ func (r *ContentRepository) GetBlockContent(ctx context.Context, blockID int64) 
 	if sourcePage.Valid {
 		page := int(sourcePage.Int64)
 		content.SourcePage = &page
+	}
+
+	if len(imageURLsJSON) > 0 {
+		if err := json.Unmarshal(imageURLsJSON, &content.ImageURLs); err != nil {
+			return learning.BlockContent{}, fmt.Errorf("decode block content image_urls %d: %w", blockID, err)
+		}
+	}
+
+	if len(tagsJSON) > 0 {
+		if err := json.Unmarshal(tagsJSON, &content.Tags); err != nil {
+			return learning.BlockContent{}, fmt.Errorf("decode block content tags %d: %w", blockID, err)
+		}
 	}
 
 	if len(sourceMetadata) > 0 {
