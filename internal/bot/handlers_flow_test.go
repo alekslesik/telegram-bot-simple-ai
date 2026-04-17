@@ -107,11 +107,13 @@ func newFlowTestHandlers(
 }
 
 type fakeAIProvider struct {
-	reply string
-	err   error
+	reply     string
+	err       error
+	lastInput llmservice.TheoryInput
 }
 
-func (f fakeAIProvider) ExplainTheory(context.Context, llmservice.TheoryInput) (string, error) {
+func (f *fakeAIProvider) ExplainTheory(_ context.Context, input llmservice.TheoryInput) (string, error) {
+	f.lastInput = input
 	if f.err != nil {
 		return "", f.err
 	}
@@ -424,12 +426,13 @@ func TestHandlers_HandleLearningMenuSelection_TogglesAIChatMode(t *testing.T) {
 
 func TestHandlers_HandleMessage_AIChatModeRepliesWithAI(t *testing.T) {
 	bot := &fakeFlowTelegram{}
+	ai := &fakeAIProvider{reply: "AI ответ"}
 	h := newFlowTestHandlers(
 		bot,
 		fakeFlowContentRepository{},
 		fakeFlowContentService{},
 		fakeFlowLearningService{},
-		fakeAIProvider{reply: "AI ответ"},
+		ai,
 	)
 	h.setAIChatMode(777, true)
 
@@ -448,6 +451,12 @@ func TestHandlers_HandleMessage_AIChatModeRepliesWithAI(t *testing.T) {
 	}
 	if strings.TrimSpace(cfg.Text) != "AI ответ" {
 		t.Fatalf("expected ai response text, got %q", cfg.Text)
+	}
+	if strings.TrimSpace(ai.lastInput.Theory) != "" {
+		t.Fatalf("expected empty theory context in chat mode, got %q", ai.lastInput.Theory)
+	}
+	if ai.lastInput.Question != "проверь связь" {
+		t.Fatalf("expected question to equal user message, got %q", ai.lastInput.Question)
 	}
 }
 
