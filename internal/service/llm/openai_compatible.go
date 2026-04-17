@@ -52,7 +52,10 @@ func NewOpenAICompatible(cfg Config) *OpenAICompatible {
 }
 
 func (a *OpenAICompatible) ReviewAnswer(ctx context.Context, input ReviewInput) (ReviewResult, error) {
-	content, err := a.chatCompletion(ctx, reviewSystemPrompt, formatReviewPrompt(input))
+	content, err := a.chatCompletion(ctx, []chatMessage{
+		{Role: "system", Content: reviewSystemPrompt},
+		{Role: "user", Content: formatReviewPrompt(input)},
+	})
 	if err != nil {
 		return ReviewResult{}, err
 	}
@@ -61,27 +64,34 @@ func (a *OpenAICompatible) ReviewAnswer(ctx context.Context, input ReviewInput) 
 }
 
 func (a *OpenAICompatible) ExplainTheory(ctx context.Context, input TheoryInput) (string, error) {
-	return a.chatCompletion(ctx, theorySystemPrompt, formatTheoryPrompt(input))
+	return a.chatCompletion(ctx, []chatMessage{
+		{Role: "system", Content: theorySystemPrompt},
+		{Role: "user", Content: formatTheoryPrompt(input)},
+	})
 }
 
 func (a *OpenAICompatible) ExplainSolution(ctx context.Context, input SolutionInput) (string, error) {
-	return a.chatCompletion(ctx, solutionSystemPrompt, formatSolutionPrompt(input))
+	return a.chatCompletion(ctx, []chatMessage{
+		{Role: "system", Content: solutionSystemPrompt},
+		{Role: "user", Content: formatSolutionPrompt(input)},
+	})
 }
 
 func (a *OpenAICompatible) Chat(ctx context.Context, input ChatInput) (string, error) {
-	return a.chatCompletion(ctx, chatSystemPrompt, formatChatPrompt(input))
+	messages := make([]chatMessage, 0, len(input.History)+2)
+	messages = append(messages, chatMessage{Role: "system", Content: chatSystemPrompt})
+	messages = append(messages, formatChatHistory(input.History)...)
+	messages = append(messages, chatMessage{Role: "user", Content: formatChatPrompt(input)})
+	return a.chatCompletion(ctx, messages)
 }
 
-func (a *OpenAICompatible) chatCompletion(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+func (a *OpenAICompatible) chatCompletion(ctx context.Context, messages []chatMessage) (string, error) {
 	requestBody := struct {
 		Model    string        `json:"model"`
 		Messages []chatMessage `json:"messages"`
 	}{
-		Model: a.cfg.Model,
-		Messages: []chatMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
+		Model:    a.cfg.Model,
+		Messages: messages,
 	}
 
 	body, err := json.Marshal(requestBody)
@@ -149,7 +159,7 @@ const (
 	reviewSystemPrompt   = "You are a Go interview coach. Review the user's answer and reply in concise markdown."
 	theorySystemPrompt   = "You are a Go interview coach. Explain the requested theory in concise markdown."
 	solutionSystemPrompt = "You are a Go interview coach. Explain the reference solution in concise markdown."
-	chatSystemPrompt     = "You are an IT learning and interview prep assistant for a Telegram bot. Always respond in Russian, plain text only (no markdown, no headings, no bullet lists). Keep answers concise and conversational. You may discuss IT/programming/algorithms/system design/interview prep and the bot's own capabilities. If asked about unrelated non-IT topics (e.g. diet/medicine), politely refuse and redirect to IT topics."
+	chatSystemPrompt     = "You are an AI assistant inside a Telegram learning bot. Always respond in Russian, concise and conversational. You can discuss learning process, interview preparation, IT topics, and the bot's own capabilities. If the user asks for code, provide only Go code and format it strictly as fenced markdown blocks using ```go ... ``` (never use other programming languages). Avoid headings and long bullet lists."
 )
 
 func formatReviewPrompt(input ReviewInput) string {
@@ -159,6 +169,28 @@ func formatReviewPrompt(input ReviewInput) string {
 		strings.TrimSpace(input.UserAnswer),
 		strings.TrimSpace(input.ReferenceSolution),
 	)
+}
+
+func formatChatHistory(history []ChatMessage) []chatMessage {
+	if len(history) == 0 {
+		return nil
+	}
+	messages := make([]chatMessage, 0, len(history))
+	for _, item := range history {
+		role := strings.TrimSpace(item.Role)
+		content := strings.TrimSpace(item.Content)
+		if content == "" {
+			continue
+		}
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		messages = append(messages, chatMessage{
+			Role:    role,
+			Content: content,
+		})
+	}
+	return messages
 }
 
 func formatTheoryPrompt(input TheoryInput) string {

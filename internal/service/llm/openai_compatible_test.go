@@ -73,6 +73,46 @@ func TestReviewAnswerUsesChatCompletions(t *testing.T) {
 	}
 }
 
+func TestChatIncludesHistoryMessages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if len(req.Messages) != 4 {
+			t.Fatalf("expected 4 messages (system + history pair + user), got %d", len(req.Messages))
+		}
+		if req.Messages[1].Role != "user" || req.Messages[1].Content != "привет" {
+			t.Fatalf("unexpected first history message: %#v", req.Messages[1])
+		}
+		if req.Messages[2].Role != "assistant" || req.Messages[2].Content != "привет! чем помочь?" {
+			t.Fatalf("unexpected second history message: %#v", req.Messages[2])
+		}
+		if req.Messages[3].Role != "user" || req.Messages[3].Content != "объясни map в go" {
+			t.Fatalf("unexpected current user message: %#v", req.Messages[3])
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAICompatible(Config{BaseURL: server.URL, APIKey: "x", Model: "gpt-4o-mini"})
+	_, err := client.Chat(context.Background(), ChatInput{
+		Message: "объясни map в go",
+		History: []ChatMessage{
+			{Role: "user", Content: "привет"},
+			{Role: "assistant", Content: "привет! чем помочь?"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected chat without error, got %v", err)
+	}
+}
+
 func TestReviewAnswerReturnsErrorOnNon200(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
