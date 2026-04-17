@@ -30,7 +30,7 @@ help:
 	@echo "  staticcheck   - Run staticcheck (go run, same Go as module)"
 	@echo "  golangci-lint - Run golangci-lint (if installed)"
 	@echo "  test          - Run go tests"
-	@echo "  ingest        - Prepare readable PDF inputs from ./content/raw"
+	@echo "  ingest        - Parse PDF inputs from ./content/raw and write to DB"
 	@echo "  migrate-up    - Apply database migrations (requires cmd/migrate)"
 	@echo "  migrate-down  - Roll back database migrations (requires cmd/migrate)"
 	@echo "  vuln          - Run govulncheck (via go run)"
@@ -118,7 +118,7 @@ test:
 
 ## Prepare readable PDF inputs from ./content/raw
 ingest:
-	go run ./cmd/ingest -root ./content/raw
+	go run ./cmd/ingest -root ./content/raw -write
 
 ## Apply database migrations
 migrate-up:
