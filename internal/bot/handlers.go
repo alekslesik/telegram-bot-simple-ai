@@ -34,6 +34,7 @@ type Handlers struct {
 	Learning         flowNavigator
 	AI               aiChatProvider
 	AIChatDailyLimit int
+	AIThinkingDelay  time.Duration
 	State            flowStateStore
 	quotaStore       *inMemoryAIQuotaStore
 }
@@ -163,6 +164,7 @@ var learningMenuButtons = map[string]string{
 }
 
 const defaultAIChatDailyLimit = 30
+const defaultAIThinkingDelay = 3 * time.Second
 
 var aiChatAllowedTopicKeywords = []string{
 	"go", "golang", "алгоритм", "задач", "код", "программ", "собесед", "интерв",
@@ -170,6 +172,11 @@ var aiChatAllowedTopicKeywords = []string{
 	"struct", "interface", "slice", "map", "канал", "goroutine", "concurrency",
 	"runtime", "memory", "gc", "pointer", "oop", "docker", "git", "linux",
 	"kubernetes", "system design", "leetcode",
+	"it", "айти", "тех", "технолог", "software", "developer", "dev", "frontend",
+	"fullstack", "devops", "ci/cd", "архитектур", "паттерн", "ооп", "бд", "данных",
+	"javascript", "typescript", "python", "java", "c#", "c++", "php", "rust",
+	"react", "node", "nodejs", "cloud", "aws", "gcp", "azure", "kafka", "redis",
+	"телеграм", "telegram", "бот", "возможност", "функционал",
 }
 
 var aiChatGreetingKeywords = []string{
@@ -419,7 +426,7 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 
 	userText := strings.TrimSpace(msg.Text)
 	if !isAllowedAIChatTopic(userText) {
-		h.sendInstructionalMessage(msg.Chat.ID, "Я отвечаю только на темы Go, программирования, обучения и подготовки к собеседованиям. Задайте вопрос по этим темам.")
+		h.sendInstructionalMessage(msg.Chat.ID, "Я отвечаю на IT-темы: программирование, алгоритмы, обучение, собеседования и вопросы о возможностях бота. Непрофильные темы (например питание/медицина) я не обрабатываю.")
 		return true
 	}
 
@@ -433,9 +440,42 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	answer, err := h.AI.Chat(ctx, llmservice.ChatInput{
-		Message: userText,
-	})
+	responseCh := make(chan struct {
+		answer string
+		err    error
+	}, 1)
+	go func() {
+		answer, err := h.AI.Chat(ctx, llmservice.ChatInput{
+			Message: userText,
+		})
+		responseCh <- struct {
+			answer string
+			err    error
+		}{
+			answer: answer,
+			err:    err,
+		}
+	}()
+
+	timer := time.NewTimer(h.effectiveAIThinkingDelay())
+	defer timer.Stop()
+
+	var result struct {
+		answer string
+		err    error
+	}
+	select {
+	case result = <-responseCh:
+	case <-timer.C:
+		thinking := tgbotapi.NewMessage(msg.Chat.ID, "Думаю...")
+		thinking.ReplyMarkup = commandKeyboard()
+		if _, sendErr := h.Bot.Send(thinking); sendErr != nil {
+			h.Logger.Error("failed to send ai thinking message", "user_id", userID, "err", sendErr)
+		}
+		result = <-responseCh
+	}
+
+	answer, err := result.answer, result.err
 	if err != nil {
 		h.Logger.Error("failed to get ai chat response", "user_id", userID, "err", err)
 		h.sendInstructionalMessage(msg.Chat.ID, "Не удалось получить ответ от ИИ. Попробуйте еще раз.")
@@ -537,6 +577,13 @@ func (h *Handlers) effectiveAIChatDailyLimit() int {
 	return defaultAIChatDailyLimit
 }
 
+func (h *Handlers) effectiveAIThinkingDelay() time.Duration {
+	if h.AIThinkingDelay > 0 {
+		return h.AIThinkingDelay
+	}
+	return defaultAIThinkingDelay
+}
+
 func (h *Handlers) captureAnswerText(msg *tgbotapi.Message) bool {
 	if msg == nil {
 		return false
@@ -584,7 +631,7 @@ func (h *Handlers) handleLearningMenuSelection(msg *tgbotapi.Message, sectionCod
 		enabled := !h.aiChatModeEnabled(userID)
 		h.setAIChatMode(userID, enabled)
 		if enabled {
-			h.sendInstructionalMessage(msg.Chat.ID, fmt.Sprintf("Режим ИИ-чата включен.\nТемы: только Go, программирование, обучение и собеседования.\nЛимит: %d запросов в сутки на пользователя.\nЧтобы выключить режим, нажмите «🤖 ИИ-чат (тест)» еще раз.", h.effectiveAIChatDailyLimit()))
+			h.sendInstructionalMessage(msg.Chat.ID, fmt.Sprintf("Режим ИИ-чата включен.\nТемы: IT, программирование, алгоритмы, обучение, собеседования и вопросы о боте.\nЛимит: %d запросов в сутки на пользователя.\nЧтобы выключить режим, нажмите «🤖 ИИ-чат (тест)» еще раз.", h.effectiveAIChatDailyLimit()))
 		} else {
 			h.sendInstructionalMessage(msg.Chat.ID, "Режим ИИ-чата выключен.")
 		}

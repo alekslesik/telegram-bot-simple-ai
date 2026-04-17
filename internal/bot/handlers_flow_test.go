@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
@@ -110,10 +111,18 @@ type fakeAIProvider struct {
 	reply     string
 	err       error
 	lastInput llmservice.ChatInput
+	delay     time.Duration
 }
 
-func (f *fakeAIProvider) Chat(_ context.Context, input llmservice.ChatInput) (string, error) {
+func (f *fakeAIProvider) Chat(ctx context.Context, input llmservice.ChatInput) (string, error) {
 	f.lastInput = input
+	if f.delay > 0 {
+		select {
+		case <-time.After(f.delay):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
 	if f.err != nil {
 		return "", f.err
 	}
@@ -460,6 +469,49 @@ func TestHandlers_HandleMessage_AIChatModeRepliesWithAI(t *testing.T) {
 	}
 }
 
+func TestHandlers_HandleMessage_AIChatModeSlowReplySendsThinkingFirst(t *testing.T) {
+	bot := &fakeFlowTelegram{}
+	ai := &fakeAIProvider{
+		reply: "AI ответ после задержки",
+		delay: 40 * time.Millisecond,
+	}
+	h := newFlowTestHandlers(
+		bot,
+		fakeFlowContentRepository{},
+		fakeFlowContentService{},
+		fakeFlowLearningService{},
+		ai,
+	)
+	h.AIThinkingDelay = 10 * time.Millisecond
+	h.setAIChatMode(777, true)
+
+	h.HandleMessage(&tgbotapi.Message{
+		Text: "расскажи про map в go",
+		Chat: &tgbotapi.Chat{ID: 51},
+		From: &tgbotapi.User{ID: 777},
+	})
+
+	if len(bot.sent) < 2 {
+		t.Fatalf("expected at least 2 messages (thinking + answer), got %d", len(bot.sent))
+	}
+
+	first, ok := bot.sent[0].(tgbotapi.MessageConfig)
+	if !ok {
+		t.Fatalf("expected first sent item to be MessageConfig, got %T", bot.sent[0])
+	}
+	if strings.TrimSpace(first.Text) != "Думаю..." {
+		t.Fatalf("expected thinking message first, got %q", first.Text)
+	}
+
+	last, ok := bot.sent[len(bot.sent)-1].(tgbotapi.MessageConfig)
+	if !ok {
+		t.Fatalf("expected last sent item to be MessageConfig, got %T", bot.sent[len(bot.sent)-1])
+	}
+	if strings.TrimSpace(last.Text) != "AI ответ после задержки" {
+		t.Fatalf("expected final ai answer, got %q", last.Text)
+	}
+}
+
 func TestHandlers_HandleMessage_AIChatModeRejectsOffTopic(t *testing.T) {
 	bot := &fakeFlowTelegram{}
 	ai := &fakeAIProvider{reply: "unused"}
@@ -485,7 +537,7 @@ func TestHandlers_HandleMessage_AIChatModeRejectsOffTopic(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected MessageConfig, got %T", bot.sent[len(bot.sent)-1])
 	}
-	if !strings.Contains(strings.ToLower(cfg.Text), "только на темы go") {
+	if !strings.Contains(strings.ToLower(cfg.Text), "я отвечаю на it-темы") {
 		t.Fatalf("expected off-topic restriction text, got %q", cfg.Text)
 	}
 	if ai.lastInput.Message != "" {
@@ -538,6 +590,7 @@ func TestIsAllowedAIChatTopic(t *testing.T) {
 	}{
 		{in: "привет", want: true},
 		{in: "что такое interface в go", want: true},
+		{in: "какие возможности у этого бота?", want: true},
 		{in: "погода завтра", want: false},
 	}
 	for _, tt := range tests {
