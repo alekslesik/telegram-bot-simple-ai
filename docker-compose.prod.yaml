@@ -5,6 +5,15 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+  ingest:
+    image: ghcr.io/alekslesik/telegram-bot-simple-ai:${IMAGE_TAG:-latest}
+    profiles: ["tools"]
+    env_file:
+      - .env
+    command: ["/app/ingest", "-root", "/app/content/raw"]
+    volumes:
+      - ./content/raw:/app/content/raw:ro
+    restart: "no"
   postgres:
     image: postgres:17
     environment:

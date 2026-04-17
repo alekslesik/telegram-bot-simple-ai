@@ -22,6 +22,11 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 			-X 'main.BuildDate=${BUILD_DATE}'" \
 		-o /bot ./cmd/bot
 
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+	go build \
+		-ldflags "-s -w" \
+		-o /ingest ./cmd/ingest
+
 ## Runtime stage
 FROM alpine:3.23
 
@@ -30,6 +35,7 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata && update-ca-certificates
 
 COPY --from=builder /bot /app/bot
+COPY --from=builder /ingest /app/ingest
 
 # TOKEN и USERNAME должны приходить через окружение или --env-file
 ENV TOKEN=""
