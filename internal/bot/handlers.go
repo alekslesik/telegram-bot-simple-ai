@@ -45,7 +45,7 @@ type flowNavigator interface {
 }
 
 type aiChatProvider interface {
-	ExplainTheory(ctx context.Context, input llmservice.TheoryInput) (string, error)
+	Chat(ctx context.Context, input llmservice.ChatInput) (string, error)
 }
 
 type flowState struct {
@@ -363,11 +363,8 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	answer, err := h.AI.ExplainTheory(ctx, llmservice.TheoryInput{
-		// Free-form chat mode: pass only the user's message, without fixed "theory" text.
-		// This avoids templated/stub-like answers that always explain the same phrase.
-		Theory:   "",
-		Question: strings.TrimSpace(msg.Text),
+	answer, err := h.AI.Chat(ctx, llmservice.ChatInput{
+		Message: strings.TrimSpace(msg.Text),
 	})
 	if err != nil {
 		h.Logger.Error("failed to get ai chat response", "user_id", userID, "err", err)
@@ -381,16 +378,9 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 	}
 
 	reply := tgbotapi.NewMessage(msg.Chat.ID, replyText)
-	reply.ParseMode = tgbotapi.ModeMarkdown
 	reply.ReplyMarkup = commandKeyboard()
 	if _, err := h.Bot.Send(reply); err != nil {
-		// Some model outputs may contain invalid markdown fragments.
-		// Fallback to plain text to avoid losing the response.
-		h.Logger.Error("failed to send ai chat response in markdown mode, retrying plain text", "user_id", userID, "err", err)
-		reply.ParseMode = ""
-		if _, plainErr := h.Bot.Send(reply); plainErr != nil {
-			h.Logger.Error("failed to send ai chat response", "user_id", userID, "err", plainErr)
-		}
+		h.Logger.Error("failed to send ai chat response", "user_id", userID, "err", err)
 	}
 
 	return true
