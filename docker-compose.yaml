@@ -15,7 +15,7 @@ services:
     profiles: ["tools"]
     env_file:
       - .env
-    command: ["/app/ingest", "-root", "/app/content/raw"]
+    command: ["/app/ingest", "-root", "/app/content/raw", "-write"]
     volumes:
       - ./content/raw:/app/content/raw:ro
     restart: "no"

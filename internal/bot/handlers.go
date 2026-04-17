@@ -673,7 +673,10 @@ func (h *Handlers) handleLearningMenuSelection(msg *tgbotapi.Message, sectionCod
 	switch sectionCode {
 	case "introduction":
 		h.setAIChatMode(userID, false)
-		h.sendIntroduction(msg.Chat.ID)
+		if err := h.startSection(context.Background(), msg.Chat.ID, messageUserID(msg), sectionCode); err != nil {
+			h.sendIntroductionFallback(msg.Chat.ID)
+			h.Logger.Error("failed to start introduction section", "section", sectionCode, "err", err)
+		}
 	case "algorithms":
 		h.setAIChatMode(userID, false)
 		if err := h.startSection(context.Background(), msg.Chat.ID, messageUserID(msg), sectionCode); err != nil {
@@ -806,8 +809,19 @@ func (h *Handlers) handleFlowCallback(q *tgbotapi.CallbackQuery, data string) {
 			h.sendInstructionalMessage(q.Message.Chat.ID, "Не удалось показать решение. Попробуйте снова.")
 		}
 	case learning.StepTask:
-		// When we are in StepTask, we must show a task block (not theory).
 		nextBlock, findErr := h.findNextBlockInChapter(context.Background(), currentBlock.ChapterID, currentBlock.ID, learning.BlockTask)
+		if findErr != nil && currentBlock.BlockType == learning.BlockTheory {
+			// Intro/theory-first chapters may not contain task blocks.
+			// In that case fall back to the next available block type.
+			nextBlock, findErr = h.findNextBlockInChapter(
+				context.Background(),
+				currentBlock.ChapterID,
+				currentBlock.ID,
+				learning.BlockTheory,
+				learning.BlockSolution,
+				learning.BlockTask,
+			)
+		}
 		if findErr != nil {
 			h.Logger.Error("failed to find next learning block", "block_id", currentBlock.ID, "err", findErr)
 			h.sendInstructionalMessage(q.Message.Chat.ID, "Следующий шаг не найден. Вернитесь в меню и откройте главу заново.")
@@ -1074,7 +1088,7 @@ func (h *Handlers) sendInstructionalMessage(chatID int64, text string) {
 	}
 }
 
-func (h *Handlers) sendIntroduction(chatID int64) {
+func (h *Handlers) sendIntroductionFallback(chatID int64) {
 	text := strings.Join([]string{
 		"*Введение*",
 		"",

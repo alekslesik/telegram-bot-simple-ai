@@ -227,6 +227,54 @@ func TestHandlers_HandleCallback_FlowNextFromTheoryShowsTask(t *testing.T) {
 	}
 }
 
+func TestHandlers_HandleCallback_FlowNextFromTheoryFallsBackToTheoryWhenTaskMissing(t *testing.T) {
+	bot := &fakeFlowTelegram{}
+	repo := fakeFlowContentRepository{
+		blocks: map[int64]learning.Block{
+			20: {ID: 20, ChapterID: 4, BlockType: learning.BlockTheory, Title: "Theory 1"},
+			21: {ID: 21, ChapterID: 4, BlockType: learning.BlockTheory, Title: "Theory 2"},
+		},
+		chapterBlocks: map[int64][]learning.Block{
+			4: {
+				{ID: 20, ChapterID: 4, BlockType: learning.BlockTheory, Title: "Theory 1"},
+				{ID: 21, ChapterID: 4, BlockType: learning.BlockTheory, Title: "Theory 2"},
+			},
+		},
+	}
+	contentSvc := fakeFlowContentService{
+		payloads: map[int64]contentservice.BlockPayload{
+			21: {
+				Title:     "Theory 2",
+				BlockType: learning.BlockTheory,
+				TheoryMD:  "TheoryMD: next intro card",
+			},
+		},
+	}
+
+	h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepTask}, nil)
+
+	h.HandleCallback(&tgbotapi.CallbackQuery{
+		ID:   "next-theory-fallback",
+		From: &tgbotapi.User{ID: 3002},
+		Data: "flow:next:20",
+		Message: &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: 21},
+		},
+	})
+
+	if len(bot.sent) == 0 {
+		t.Fatal("expected a reply message")
+	}
+
+	cfg, ok := bot.sent[len(bot.sent)-1].(tgbotapi.MessageConfig)
+	if !ok {
+		t.Fatalf("expected MessageConfig, got %T", bot.sent[len(bot.sent)-1])
+	}
+	if !strings.Contains(cfg.Text, "TheoryMD: next intro card") {
+		t.Fatalf("expected theory fallback payload text, got %q", cfg.Text)
+	}
+}
+
 func TestHandlers_RenderBlockStep_LogsLearningFlowStep(t *testing.T) {
 	var logs bytes.Buffer
 
