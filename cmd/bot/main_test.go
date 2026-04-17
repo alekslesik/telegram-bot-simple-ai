@@ -225,6 +225,42 @@ func TestTokenFromEnv(t *testing.T) {
 	}
 }
 
+func TestBuildAIProvider_usesDefaultModelWhenMissing(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logging.NewWithWriter(&buf)
+	cfg := config.Config{
+		LLMProvider: "openai_compatible",
+		LLMBaseURL:  "https://api.openai.com/v1",
+		LLMAPIKey:   "key",
+		LLMModel:    "  ",
+	}
+
+	provider := buildAIProvider(cfg, logger)
+	if provider == nil {
+		t.Fatal("expected provider to be created with default model")
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("llm model is not set; using default model")) {
+		t.Fatalf("expected default-model log, got: %s", buf.String())
+	}
+}
+
+func TestBuildAIProvider_requiresBaseURLAndAPIKey(t *testing.T) {
+	var buf bytes.Buffer
+	logger := logging.NewWithWriter(&buf)
+	cfg := config.Config{
+		LLMProvider: "openai_compatible",
+		LLMModel:    "gpt-4o-mini",
+	}
+
+	provider := buildAIProvider(cfg, logger)
+	if provider != nil {
+		t.Fatal("expected nil provider when base url/api key are missing")
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("llm is not fully configured; ai chat mode will be unavailable")) {
+		t.Fatalf("expected missing-config log, got: %s", buf.String())
+	}
+}
+
 func TestValidateRuntimeConfig_requiresDatabaseURL(t *testing.T) {
 	cfg := config.Config{
 		Token:       "token",

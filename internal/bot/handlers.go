@@ -379,9 +379,16 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 	}
 
 	reply := tgbotapi.NewMessage(msg.Chat.ID, replyText)
+	reply.ParseMode = tgbotapi.ModeMarkdown
 	reply.ReplyMarkup = commandKeyboard()
 	if _, err := h.Bot.Send(reply); err != nil {
-		h.Logger.Error("failed to send ai chat response", "user_id", userID, "err", err)
+		// Some model outputs may contain invalid markdown fragments.
+		// Fallback to plain text to avoid losing the response.
+		h.Logger.Error("failed to send ai chat response in markdown mode, retrying plain text", "user_id", userID, "err", err)
+		reply.ParseMode = ""
+		if _, plainErr := h.Bot.Send(reply); plainErr != nil {
+			h.Logger.Error("failed to send ai chat response", "user_id", userID, "err", plainErr)
+		}
 	}
 
 	return true

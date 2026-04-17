@@ -205,6 +205,8 @@ func longPollTimeoutSeconds() int {
 	return 60
 }
 
+const defaultAIModel = "gpt-4o-mini"
+
 func buildAIProvider(cfg config.Config, logger slogLogger) llmservice.Provider {
 	provider := strings.ToLower(strings.TrimSpace(cfg.LLMProvider))
 	if provider != "" && provider != "openai_compatible" {
@@ -212,15 +214,21 @@ func buildAIProvider(cfg config.Config, logger slogLogger) llmservice.Provider {
 		return nil
 	}
 
-	if strings.TrimSpace(cfg.LLMBaseURL) == "" || strings.TrimSpace(cfg.LLMAPIKey) == "" || strings.TrimSpace(cfg.LLMModel) == "" {
+	if strings.TrimSpace(cfg.LLMBaseURL) == "" || strings.TrimSpace(cfg.LLMAPIKey) == "" {
 		logger.Info("llm is not fully configured; ai chat mode will be unavailable")
 		return nil
+	}
+
+	model := strings.TrimSpace(cfg.LLMModel)
+	if model == "" {
+		model = defaultAIModel
+		logger.Info("llm model is not set; using default model", "model", model)
 	}
 
 	return llmservice.NewOpenAICompatible(llmservice.Config{
 		BaseURL: cfg.LLMBaseURL,
 		APIKey:  cfg.LLMAPIKey,
-		Model:   cfg.LLMModel,
+		Model:   model,
 		Timeout: cfg.LLMTimeout,
 	})
 }
