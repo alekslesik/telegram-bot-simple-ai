@@ -27,13 +27,15 @@ type TelegramClient interface {
 }
 
 type Handlers struct {
-	Bot      TelegramClient
-	Logger   *slog.Logger
-	Repo     repository.ContentRepository
-	Content  flowContentBuilder
-	Learning flowNavigator
-	AI       aiChatProvider
-	State    flowStateStore
+	Bot              TelegramClient
+	Logger           *slog.Logger
+	Repo             repository.ContentRepository
+	Content          flowContentBuilder
+	Learning         flowNavigator
+	AI               aiChatProvider
+	AIChatDailyLimit int
+	State            flowStateStore
+	quotaStore       *inMemoryAIQuotaStore
 }
 
 type flowContentBuilder interface {
@@ -66,9 +68,25 @@ type inMemoryFlowStateStore struct {
 	byUser map[int64]flowState
 }
 
+type aiQuotaState struct {
+	DayUTC string
+	Count  int
+}
+
+type inMemoryAIQuotaStore struct {
+	mu     sync.Mutex
+	byUser map[int64]aiQuotaState
+}
+
 func newInMemoryFlowStateStore() *inMemoryFlowStateStore {
 	return &inMemoryFlowStateStore{
 		byUser: make(map[int64]flowState),
+	}
+}
+
+func newInMemoryAIQuotaStore() *inMemoryAIQuotaStore {
+	return &inMemoryAIQuotaStore{
+		byUser: make(map[int64]aiQuotaState),
 	}
 }
 
@@ -85,6 +103,31 @@ func (s *inMemoryFlowStateStore) Save(userID int64, state flowState) {
 	defer s.mu.Unlock()
 
 	s.byUser[userID] = state
+}
+
+func (s *inMemoryAIQuotaStore) Consume(userID int64, limit int, now time.Time) (remaining int, ok bool) {
+	if limit <= 0 {
+		return 0, true
+	}
+
+	dayKey := now.UTC().Format("2006-01-02")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state := s.byUser[userID]
+	if state.DayUTC != dayKey {
+		state.DayUTC = dayKey
+		state.Count = 0
+	}
+
+	if state.Count >= limit {
+		s.byUser[userID] = state
+		return 0, false
+	}
+
+	state.Count++
+	s.byUser[userID] = state
+	return limit - state.Count, true
 }
 
 type Command struct {
@@ -117,6 +160,20 @@ var learningMenuButtons = map[string]string{
 	"Мой прогресс":         "progress",
 	"Настройки":            "settings",
 	"🤖 ИИ-чат (тест)":      "ai_chat",
+}
+
+const defaultAIChatDailyLimit = 30
+
+var aiChatAllowedTopicKeywords = []string{
+	"go", "golang", "алгоритм", "задач", "код", "программ", "собесед", "интерв",
+	"backend", "sql", "postgres", "database", "db", "api", "http", "grpc",
+	"struct", "interface", "slice", "map", "канал", "goroutine", "concurrency",
+	"runtime", "memory", "gc", "pointer", "oop", "docker", "git", "linux",
+	"kubernetes", "system design", "leetcode",
+}
+
+var aiChatGreetingKeywords = []string{
+	"привет", "здравств", "добрый", "hello", "hi", "hey",
 }
 
 // demoInlineMenuKeyboard — те же пункты, что reply-клавиатура и меню у поля ввода.
@@ -360,11 +417,24 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 		return true
 	}
 
+	userText := strings.TrimSpace(msg.Text)
+	if !isAllowedAIChatTopic(userText) {
+		h.sendInstructionalMessage(msg.Chat.ID, "Я отвечаю только на темы Go, программирования, обучения и подготовки к собеседованиям. Задайте вопрос по этим темам.")
+		return true
+	}
+
+	limit := h.effectiveAIChatDailyLimit()
+	remaining, ok := h.ensureAIQuotaStore().Consume(userID, limit, time.Now())
+	if !ok {
+		h.sendInstructionalMessage(msg.Chat.ID, fmt.Sprintf("Вы достигли дневного лимита (%d) для ИИ-чата. Попробуйте снова завтра.", limit))
+		return true
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	answer, err := h.AI.Chat(ctx, llmservice.ChatInput{
-		Message: strings.TrimSpace(msg.Text),
+		Message: userText,
 	})
 	if err != nil {
 		h.Logger.Error("failed to get ai chat response", "user_id", userID, "err", err)
@@ -381,8 +451,10 @@ func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
 	reply.ReplyMarkup = commandKeyboard()
 	if _, err := h.Bot.Send(reply); err != nil {
 		h.Logger.Error("failed to send ai chat response", "user_id", userID, "err", err)
+		return true
 	}
 
+	h.Logger.Info("ai chat response sent", "user_id", userID, "remaining_daily_quota", remaining)
 	return true
 }
 
@@ -451,6 +523,20 @@ func (h *Handlers) ensureFlowStateStore() flowStateStore {
 	return h.State
 }
 
+func (h *Handlers) ensureAIQuotaStore() *inMemoryAIQuotaStore {
+	if h.quotaStore == nil {
+		h.quotaStore = newInMemoryAIQuotaStore()
+	}
+	return h.quotaStore
+}
+
+func (h *Handlers) effectiveAIChatDailyLimit() int {
+	if h.AIChatDailyLimit > 0 {
+		return h.AIChatDailyLimit
+	}
+	return defaultAIChatDailyLimit
+}
+
 func (h *Handlers) captureAnswerText(msg *tgbotapi.Message) bool {
 	if msg == nil {
 		return false
@@ -498,7 +584,7 @@ func (h *Handlers) handleLearningMenuSelection(msg *tgbotapi.Message, sectionCod
 		enabled := !h.aiChatModeEnabled(userID)
 		h.setAIChatMode(userID, enabled)
 		if enabled {
-			h.sendInstructionalMessage(msg.Chat.ID, "Режим ИИ-чата включен. Напишите сообщение, и я отвечу через ИИ.\nЧтобы выключить режим, нажмите «🤖 ИИ-чат (тест)» еще раз.")
+			h.sendInstructionalMessage(msg.Chat.ID, fmt.Sprintf("Режим ИИ-чата включен.\nТемы: только Go, программирование, обучение и собеседования.\nЛимит: %d запросов в сутки на пользователя.\nЧтобы выключить режим, нажмите «🤖 ИИ-чат (тест)» еще раз.", h.effectiveAIChatDailyLimit()))
 		} else {
 			h.sendInstructionalMessage(msg.Chat.ID, "Режим ИИ-чата выключен.")
 		}
@@ -526,6 +612,28 @@ func (h *Handlers) setAIChatMode(userID int64, enabled bool) {
 	}
 	state.AIChatMode = enabled
 	store.Save(userID, state)
+}
+
+func isAllowedAIChatTopic(text string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(text))
+	if normalized == "" {
+		return false
+	}
+
+	if containsAnyKeyword(normalized, aiChatGreetingKeywords) {
+		return true
+	}
+
+	return containsAnyKeyword(normalized, aiChatAllowedTopicKeywords)
+}
+
+func containsAnyKeyword(text string, keywords []string) bool {
+	for _, keyword := range keywords {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handlers) startSection(ctx context.Context, chatID, userID int64, sectionCode string) error {

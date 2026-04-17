@@ -437,7 +437,7 @@ func TestHandlers_HandleMessage_AIChatModeRepliesWithAI(t *testing.T) {
 	h.setAIChatMode(777, true)
 
 	h.HandleMessage(&tgbotapi.Message{
-		Text: "проверь связь",
+		Text: "как работает map в go?",
 		Chat: &tgbotapi.Chat{ID: 51},
 		From: &tgbotapi.User{ID: 777},
 	})
@@ -452,11 +452,98 @@ func TestHandlers_HandleMessage_AIChatModeRepliesWithAI(t *testing.T) {
 	if strings.TrimSpace(cfg.Text) != "AI ответ" {
 		t.Fatalf("expected ai response text, got %q", cfg.Text)
 	}
-	if ai.lastInput.Message != "проверь связь" {
+	if ai.lastInput.Message != "как работает map в go?" {
 		t.Fatalf("expected chat message to equal user text, got %q", ai.lastInput.Message)
 	}
 	if cfg.ParseMode != "" {
 		t.Fatalf("expected plain text parse mode, got %q", cfg.ParseMode)
+	}
+}
+
+func TestHandlers_HandleMessage_AIChatModeRejectsOffTopic(t *testing.T) {
+	bot := &fakeFlowTelegram{}
+	ai := &fakeAIProvider{reply: "unused"}
+	h := newFlowTestHandlers(
+		bot,
+		fakeFlowContentRepository{},
+		fakeFlowContentService{},
+		fakeFlowLearningService{},
+		ai,
+	)
+	h.setAIChatMode(777, true)
+
+	h.HandleMessage(&tgbotapi.Message{
+		Text: "посоветуй фильм на вечер",
+		Chat: &tgbotapi.Chat{ID: 51},
+		From: &tgbotapi.User{ID: 777},
+	})
+
+	if len(bot.sent) == 0 {
+		t.Fatal("expected instructional off-topic reply")
+	}
+	cfg, ok := bot.sent[len(bot.sent)-1].(tgbotapi.MessageConfig)
+	if !ok {
+		t.Fatalf("expected MessageConfig, got %T", bot.sent[len(bot.sent)-1])
+	}
+	if !strings.Contains(strings.ToLower(cfg.Text), "только на темы go") {
+		t.Fatalf("expected off-topic restriction text, got %q", cfg.Text)
+	}
+	if ai.lastInput.Message != "" {
+		t.Fatalf("expected provider not to be called for off-topic request, got %q", ai.lastInput.Message)
+	}
+}
+
+func TestHandlers_HandleMessage_AIChatModeEnforcesDailyLimit(t *testing.T) {
+	bot := &fakeFlowTelegram{}
+	ai := &fakeAIProvider{reply: "ok"}
+	h := newFlowTestHandlers(
+		bot,
+		fakeFlowContentRepository{},
+		fakeFlowContentService{},
+		fakeFlowLearningService{},
+		ai,
+	)
+	h.AIChatDailyLimit = 1
+	h.setAIChatMode(777, true)
+
+	first := &tgbotapi.Message{
+		Text: "что такое map в go?",
+		Chat: &tgbotapi.Chat{ID: 51},
+		From: &tgbotapi.User{ID: 777},
+	}
+	second := &tgbotapi.Message{
+		Text: "а что такое slice в go?",
+		Chat: &tgbotapi.Chat{ID: 51},
+		From: &tgbotapi.User{ID: 777},
+	}
+	h.HandleMessage(first)
+	h.HandleMessage(second)
+
+	if len(bot.sent) < 2 {
+		t.Fatalf("expected at least 2 responses, got %d", len(bot.sent))
+	}
+	cfg, ok := bot.sent[len(bot.sent)-1].(tgbotapi.MessageConfig)
+	if !ok {
+		t.Fatalf("expected MessageConfig, got %T", bot.sent[len(bot.sent)-1])
+	}
+	if !strings.Contains(strings.ToLower(cfg.Text), "дневного лимита") {
+		t.Fatalf("expected daily limit text, got %q", cfg.Text)
+	}
+}
+
+func TestIsAllowedAIChatTopic(t *testing.T) {
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{in: "привет", want: true},
+		{in: "что такое interface в go", want: true},
+		{in: "погода завтра", want: false},
+	}
+	for _, tt := range tests {
+		if got := isAllowedAIChatTopic(tt.in); got != tt.want {
+			t.Fatalf("isAllowedAIChatTopic(%q) = %v, want %v", tt.in, got, tt.want)
+		}
 	}
 }
 
