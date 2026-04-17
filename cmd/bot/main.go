@@ -302,12 +302,13 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	h := bot.Handlers{
-		Bot:      tg,
-		Logger:   logger,
-		Repo:     contentRepo,
-		Content:  contentSvc,
-		Learning: learningSvc,
-		AI:       aiProvider,
+		Bot:              tg,
+		Logger:           logger,
+		Repo:             contentRepo,
+		Content:          contentSvc,
+		Learning:         learningSvc,
+		AI:               aiProvider,
+		AIChatDailyLimit: cfg.AIChatDailyLimit,
 	}
 
 	logger.Info("bot started with long polling, press Ctrl+C to stop")

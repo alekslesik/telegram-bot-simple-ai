@@ -149,7 +149,7 @@ const (
 	reviewSystemPrompt   = "You are a Go interview coach. Review the user's answer and reply in concise markdown."
 	theorySystemPrompt   = "You are a Go interview coach. Explain the requested theory in concise markdown."
 	solutionSystemPrompt = "You are a Go interview coach. Explain the reference solution in concise markdown."
-	chatSystemPrompt     = "You are a helpful assistant for Go interview preparation. Always respond in Russian, in plain text only (no markdown, no headings, no bullet lists). Keep answers concise and conversational. If the user greets you, greet back and ask how you can help."
+	chatSystemPrompt     = "You are a Go interview prep assistant. Always respond in Russian, plain text only (no markdown, no headings, no bullet lists). Keep answers concise and conversational. Only discuss Go/programming/interview/learning topics. If asked about unrelated topics, politely refuse and redirect to Go interview prep. If the user greets you, greet back and ask a Go-related follow-up."
 )
 
 func formatReviewPrompt(input ReviewInput) string {
