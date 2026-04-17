@@ -63,6 +63,13 @@ func TestSetMyCommandsConfig(t *testing.T) {
 	_ = cfg
 }
 
+func TestDeleteMyCommandsConfig(t *testing.T) {
+	cfg := deleteMyCommandsConfig()
+	if cfg.Scope != nil {
+		t.Fatalf("expected nil scope for default delete config, got %#v", cfg.Scope)
+	}
+}
+
 type stubTelegram struct {
 	last tgbotapi.Chattable
 }
@@ -193,7 +200,7 @@ func TestRegisterBotCommands_errorLogged(t *testing.T) {
 	var buf bytes.Buffer
 	logger := logging.NewWithWriter(&buf)
 	registerBotCommands(errRegistrar{}, logger)
-	if !bytes.Contains(buf.Bytes(), []byte("failed to register bot commands")) {
+	if !bytes.Contains(buf.Bytes(), []byte("failed to hide bot command menu")) {
 		t.Fatalf("log: %s", buf.String())
 	}
 }
@@ -201,9 +208,13 @@ func TestRegisterBotCommands_errorLogged(t *testing.T) {
 func TestRegisterBotCommands_ok(t *testing.T) {
 	var buf bytes.Buffer
 	logger := logging.NewWithWriter(&buf)
-	registerBotCommands(&stubTelegram{}, logger)
+	st := &stubTelegram{}
+	registerBotCommands(st, logger)
 	if buf.Len() != 0 {
 		t.Fatalf("expected no error log, got %s", buf.String())
+	}
+	if _, ok := st.last.(tgbotapi.DeleteMyCommandsConfig); !ok {
+		t.Fatalf("expected delete-my-commands request, got %T", st.last)
 	}
 }
 

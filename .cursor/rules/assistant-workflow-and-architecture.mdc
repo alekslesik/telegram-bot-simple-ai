@@ -50,6 +50,14 @@ Do a lightweight cycle:
 7. If any containers were started during checks, run `make docker-compose-down`
 8. Skip local runtime checks and skip release tag by default
 
+# Post-Release Verification
+
+- After every release tag or release-triggered deploy, always verify that the GitHub Actions release workflow completed successfully.
+- If the release workflow includes deploy steps, always inspect the deploy job result, not just the image build/push step.
+- After a successful production deploy, always check startup logs for both the bot container and the database container.
+- Treat startup-stage connection errors, restart loops, missing env/config files, and image pull failures as release blockers until verified fixed.
+- Do not report a release as successful until Actions status is green and production startup logs show the bot and database reached a healthy running state.
+
 # Git Safety
 
 - Never commit or push directly to `main`.

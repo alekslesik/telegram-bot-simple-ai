@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/alekslesik/telegram-bot-simple/internal/repository"
 	contentservice "github.com/alekslesik/telegram-bot-simple/internal/service/content"
 	learningflowservice "github.com/alekslesik/telegram-bot-simple/internal/service/learningflow"
+	llmservice "github.com/alekslesik/telegram-bot-simple/internal/service/llm"
 )
 
 // TelegramClient — минимум для Send и ответа на callback (answerCallbackQuery).
@@ -30,6 +32,7 @@ type Handlers struct {
 	Repo     repository.ContentRepository
 	Content  flowContentBuilder
 	Learning flowNavigator
+	AI       aiChatProvider
 	State    flowStateStore
 }
 
@@ -41,11 +44,16 @@ type flowNavigator interface {
 	NextStep(blockType learning.BlockType, current learning.FlowStep, action learningflowservice.Action) learning.FlowStep
 }
 
+type aiChatProvider interface {
+	ExplainTheory(ctx context.Context, input llmservice.TheoryInput) (string, error)
+}
+
 type flowState struct {
 	BlockID    int64
 	ChapterID  int64
 	Step       learning.FlowStep
 	LastAnswer string
+	AIChatMode bool
 }
 
 type flowStateStore interface {
@@ -108,6 +116,7 @@ var learningMenuButtons = map[string]string{
 	"Рандом задача":        "random",
 	"Мой прогресс":         "progress",
 	"Настройки":            "settings",
+	"🤖 ИИ-чат (тест)":      "ai_chat",
 }
 
 // demoInlineMenuKeyboard — те же пункты, что reply-клавиатура и меню у поля ввода.
@@ -144,6 +153,7 @@ func commandKeyboard() tgbotapi.ReplyKeyboardMarkup {
 		),
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("Настройки"),
+			tgbotapi.NewKeyboardButton("🤖 ИИ-чат (тест)"),
 		),
 	)
 }
@@ -321,6 +331,10 @@ func (h *Handlers) HandleMessage(msg *tgbotapi.Message) {
 		return
 	}
 
+	if h.handleAIChatMessage(msg) {
+		return
+	}
+
 	if h.captureAnswerText(msg) {
 		return
 	}
@@ -330,6 +344,47 @@ func (h *Handlers) HandleMessage(msg *tgbotapi.Message) {
 	if _, err := h.Bot.Send(reply); err != nil {
 		h.Logger.Error("failed to send message", "err", err)
 	}
+}
+
+func (h *Handlers) handleAIChatMessage(msg *tgbotapi.Message) bool {
+	if msg == nil || strings.TrimSpace(msg.Text) == "" {
+		return false
+	}
+	userID := messageUserID(msg)
+	if userID == 0 || !h.aiChatModeEnabled(userID) {
+		return false
+	}
+
+	if h.AI == nil {
+		h.sendInstructionalMessage(msg.Chat.ID, "ИИ-режим включен, но провайдер ИИ не настроен. Проверьте LLM_* переменные окружения.")
+		return true
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	answer, err := h.AI.ExplainTheory(ctx, llmservice.TheoryInput{
+		Theory:   "Пользователь хочет свободный диалог в тестовом режиме.",
+		Question: msg.Text,
+	})
+	if err != nil {
+		h.Logger.Error("failed to get ai chat response", "user_id", userID, "err", err)
+		h.sendInstructionalMessage(msg.Chat.ID, "Не удалось получить ответ от ИИ. Попробуйте еще раз.")
+		return true
+	}
+
+	replyText := strings.TrimSpace(answer)
+	if replyText == "" {
+		replyText = "ИИ не вернул текст. Попробуйте переформулировать вопрос."
+	}
+
+	reply := tgbotapi.NewMessage(msg.Chat.ID, replyText)
+	reply.ReplyMarkup = commandKeyboard()
+	if _, err := h.Bot.Send(reply); err != nil {
+		h.Logger.Error("failed to send ai chat response", "user_id", userID, "err", err)
+	}
+
+	return true
 }
 
 func (h *Handlers) HandleCommand(msg *tgbotapi.Message) {
@@ -426,8 +481,10 @@ func (h *Handlers) captureAnswerText(msg *tgbotapi.Message) bool {
 }
 
 func (h *Handlers) handleLearningMenuSelection(msg *tgbotapi.Message, sectionCode string) {
+	userID := messageUserID(msg)
 	switch sectionCode {
 	case "introduction", "algorithms":
+		h.setAIChatMode(userID, false)
 		if err := h.startSection(context.Background(), msg.Chat.ID, messageUserID(msg), sectionCode); err != nil {
 			h.sendInstructionalMessage(msg.Chat.ID, "Не удалось открыть раздел. Попробуйте еще раз чуть позже.")
 			h.Logger.Error("failed to start learning section", "section", sectionCode, "err", err)
@@ -438,9 +495,38 @@ func (h *Handlers) handleLearningMenuSelection(msg *tgbotapi.Message, sectionCod
 		h.sendInstructionalMessage(msg.Chat.ID, "Прогресс появится после сохранения решений. Пока можно продолжить обучение по главам.")
 	case "settings":
 		h.sendInstructionalMessage(msg.Chat.ID, "Настройки пока минимальные. Скоро здесь будут язык, темп и формат объяснений.")
+	case "ai_chat":
+		enabled := !h.aiChatModeEnabled(userID)
+		h.setAIChatMode(userID, enabled)
+		if enabled {
+			h.sendInstructionalMessage(msg.Chat.ID, "Режим ИИ-чата включен. Напишите сообщение, и я отвечу через ИИ.\nЧтобы выключить режим, нажмите «🤖 ИИ-чат (тест)» еще раз.")
+		} else {
+			h.sendInstructionalMessage(msg.Chat.ID, "Режим ИИ-чата выключен.")
+		}
 	default:
 		h.sendInstructionalMessage(msg.Chat.ID, "Выберите раздел из меню ниже.")
 	}
+}
+
+func (h *Handlers) aiChatModeEnabled(userID int64) bool {
+	if userID == 0 {
+		return false
+	}
+	state, ok := h.ensureFlowStateStore().Get(userID)
+	return ok && state.AIChatMode
+}
+
+func (h *Handlers) setAIChatMode(userID int64, enabled bool) {
+	if userID == 0 {
+		return
+	}
+	store := h.ensureFlowStateStore()
+	state, ok := store.Get(userID)
+	if !ok {
+		state = flowState{}
+	}
+	state.AIChatMode = enabled
+	store.Save(userID, state)
 }
 
 func (h *Handlers) startSection(ctx context.Context, chatID, userID int64, sectionCode string) error {
@@ -618,6 +704,7 @@ func (h *Handlers) renderReviewStep(chatID, userID int64, currentBlock learning.
 		ChapterID:  currentBlock.ChapterID,
 		Step:       learning.StepReview,
 		LastAnswer: state.LastAnswer,
+		AIChatMode: state.AIChatMode,
 	})
 }
 
@@ -643,8 +730,12 @@ func (h *Handlers) renderBlockStep(ctx context.Context, chatID, userID int64, bl
 	)
 
 	lastAnswer := ""
+	aiChatMode := false
 	if existing, ok := h.ensureFlowStateStore().Get(userID); ok && existing.BlockID == block.ID {
 		lastAnswer = existing.LastAnswer
+	}
+	if existing, ok := h.ensureFlowStateStore().Get(userID); ok {
+		aiChatMode = existing.AIChatMode
 	}
 
 	h.ensureFlowStateStore().Save(userID, flowState{
@@ -652,6 +743,7 @@ func (h *Handlers) renderBlockStep(ctx context.Context, chatID, userID int64, bl
 		ChapterID:  block.ChapterID,
 		Step:       step,
 		LastAnswer: lastAnswer,
+		AIChatMode: aiChatMode,
 	})
 
 	return nil
