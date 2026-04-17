@@ -1,0 +1,12 @@
+---
+description: Verify Actions and production startup after every release
+alwaysApply: true
+---
+
+# Post-Release Verification
+
+- After every release tag or release-triggered deploy, always verify that the GitHub Actions release workflow completed successfully.
+- If the release workflow has multiple jobs, inspect the final deploy job result, not only the image build/push job.
+- After a successful production deploy, always inspect recent startup logs for both the bot container and the database container.
+- Treat restart loops, image pull failures, missing `.env` or config files, and startup-stage connection errors as release blockers until verified fixed.
+- Do not report a release as successful until Actions are green and production logs show both the bot and database reached a healthy running state.

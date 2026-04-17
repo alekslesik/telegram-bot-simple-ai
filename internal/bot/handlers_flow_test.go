@@ -15,6 +15,7 @@ import (
 	"github.com/alekslesik/telegram-bot-simple/internal/repository"
 	contentservice "github.com/alekslesik/telegram-bot-simple/internal/service/content"
 	"github.com/alekslesik/telegram-bot-simple/internal/service/learningflow"
+	llmservice "github.com/alekslesik/telegram-bot-simple/internal/service/llm"
 )
 
 type fakeFlowTelegram struct {
@@ -87,15 +88,34 @@ func (f fakeFlowContentRepository) ListBlockRelations(context.Context, int64) ([
 
 var _ repository.ContentRepository = fakeFlowContentRepository{}
 
-func newFlowTestHandlers(bot TelegramClient, repo repository.ContentRepository, contentSvc flowContentBuilder, learningSvc flowNavigator) *Handlers {
+func newFlowTestHandlers(
+	bot TelegramClient,
+	repo repository.ContentRepository,
+	contentSvc flowContentBuilder,
+	learningSvc flowNavigator,
+	aiSvc aiChatProvider,
+) *Handlers {
 	return &Handlers{
 		Bot:      bot,
 		Logger:   slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 		Content:  contentSvc,
 		Learning: learningSvc,
+		AI:       aiSvc,
 		Repo:     repo,
 		State:    newInMemoryFlowStateStore(),
 	}
+}
+
+type fakeAIProvider struct {
+	reply string
+	err   error
+}
+
+func (f fakeAIProvider) ExplainTheory(context.Context, llmservice.TheoryInput) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.reply, nil
 }
 
 func TestHandlers_HandleCallback_FlowSkipAnswerShowsSolution(t *testing.T) {
@@ -122,7 +142,7 @@ func TestHandlers_HandleCallback_FlowSkipAnswerShowsSolution(t *testing.T) {
 		},
 	}
 
-	h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepSolution})
+	h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepSolution}, nil)
 
 	h.HandleCallback(&tgbotapi.CallbackQuery{
 		ID:   "skip-answer",
@@ -170,7 +190,7 @@ func TestHandlers_HandleCallback_FlowNextFromTheoryShowsTask(t *testing.T) {
 		},
 	}
 
-	h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepTask})
+	h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepTask}, nil)
 
 	h.HandleCallback(&tgbotapi.CallbackQuery{
 		ID:   "next-theory",
@@ -213,7 +233,7 @@ func TestHandlers_RenderBlockStep_LogsLearningFlowStep(t *testing.T) {
 		},
 	}
 
-	h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepTask})
+	h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepTask}, nil)
 	h.Logger = slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{}))
 
 	err := h.renderBlockStep(context.Background(), 11, 2002, learning.Block{
@@ -249,7 +269,7 @@ func TestCommandKeyboard_LearningMenuLabelsResolveThroughMap(t *testing.T) {
 		}
 	}
 
-	required := []string{"Введение", "Алгоритмы по порядку", "Рандом задача", "Мой прогресс", "Настройки"}
+	required := []string{"Введение", "Алгоритмы по порядку", "Рандом задача", "Мой прогресс", "Настройки", "🤖 ИИ-чат (тест)"}
 	for _, label := range required {
 		if _, ok := seen[label]; !ok {
 			t.Fatalf("expected reply keyboard to contain %q", label)
@@ -317,7 +337,7 @@ func TestLearningMenuButtonsRouteToExpectedSectionCodes(t *testing.T) {
 			},
 		}
 
-		h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepTask})
+		h := newFlowTestHandlers(bot, repo, contentSvc, fakeFlowLearningService{next: learning.StepTask}, nil)
 
 		msg := &tgbotapi.Message{
 			Chat: &tgbotapi.Chat{ID: 10},
@@ -344,7 +364,7 @@ func TestHandlers_HandleCallback_UnknownFlowActionKeepsStateAndSendsInstruction(
 		},
 	}
 
-	h := newFlowTestHandlers(bot, repo, fakeFlowContentService{}, fakeFlowLearningService{next: learning.StepSolution})
+	h := newFlowTestHandlers(bot, repo, fakeFlowContentService{}, fakeFlowLearningService{next: learning.StepSolution}, nil)
 	userID := int64(3003)
 	h.State.Save(userID, flowState{
 		BlockID:    55,
@@ -380,6 +400,54 @@ func TestHandlers_HandleCallback_UnknownFlowActionKeepsStateAndSendsInstruction(
 	}
 	if got.BlockID != 55 || got.Step != learning.StepReview || got.LastAnswer != "my previous answer" {
 		t.Fatalf("state changed unexpectedly: %#v", got)
+	}
+}
+
+func TestHandlers_HandleLearningMenuSelection_TogglesAIChatMode(t *testing.T) {
+	bot := &fakeFlowTelegram{}
+	h := newFlowTestHandlers(bot, fakeFlowContentRepository{}, fakeFlowContentService{}, fakeFlowLearningService{}, nil)
+	msg := &tgbotapi.Message{
+		Chat: &tgbotapi.Chat{ID: 42},
+		From: &tgbotapi.User{ID: 100},
+	}
+
+	h.handleLearningMenuSelection(msg, "ai_chat")
+	if !h.aiChatModeEnabled(100) {
+		t.Fatal("expected ai chat mode to be enabled")
+	}
+
+	h.handleLearningMenuSelection(msg, "ai_chat")
+	if h.aiChatModeEnabled(100) {
+		t.Fatal("expected ai chat mode to be disabled")
+	}
+}
+
+func TestHandlers_HandleMessage_AIChatModeRepliesWithAI(t *testing.T) {
+	bot := &fakeFlowTelegram{}
+	h := newFlowTestHandlers(
+		bot,
+		fakeFlowContentRepository{},
+		fakeFlowContentService{},
+		fakeFlowLearningService{},
+		fakeAIProvider{reply: "AI ответ"},
+	)
+	h.setAIChatMode(777, true)
+
+	h.HandleMessage(&tgbotapi.Message{
+		Text: "проверь связь",
+		Chat: &tgbotapi.Chat{ID: 51},
+		From: &tgbotapi.User{ID: 777},
+	})
+
+	if len(bot.sent) == 0 {
+		t.Fatal("expected ai reply message")
+	}
+	cfg, ok := bot.sent[len(bot.sent)-1].(tgbotapi.MessageConfig)
+	if !ok {
+		t.Fatalf("expected MessageConfig, got %T", bot.sent[len(bot.sent)-1])
+	}
+	if strings.TrimSpace(cfg.Text) != "AI ответ" {
+		t.Fatalf("expected ai response text, got %q", cfg.Text)
 	}
 }
 

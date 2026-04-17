@@ -1,3 +1,4 @@
+
 services:
   bot:
     image: ghcr.io/alekslesik/telegram-bot-simple-ai:${IMAGE_TAG:-latest}

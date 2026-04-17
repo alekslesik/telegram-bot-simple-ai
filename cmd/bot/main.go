@@ -19,6 +19,7 @@ import (
 	"github.com/alekslesik/telegram-bot-simple/internal/logging"
 	contentservice "github.com/alekslesik/telegram-bot-simple/internal/service/content"
 	learningflowservice "github.com/alekslesik/telegram-bot-simple/internal/service/learningflow"
+	llmservice "github.com/alekslesik/telegram-bot-simple/internal/service/llm"
 	"github.com/alekslesik/telegram-bot-simple/internal/storage/postgres"
 	"github.com/alekslesik/telegram-bot-simple/internal/telegram"
 )
@@ -172,8 +173,8 @@ type commandRegistrar interface {
 }
 
 func registerBotCommands(reg commandRegistrar, logger slogLogger) {
-	if _, err := reg.Request(setMyCommandsConfig()); err != nil {
-		logger.Error("failed to register bot commands", "err", err)
+	if _, err := reg.Request(deleteMyCommandsConfig()); err != nil {
+		logger.Error("failed to hide bot command menu", "err", err)
 	}
 }
 
@@ -204,6 +205,26 @@ func longPollTimeoutSeconds() int {
 	return 60
 }
 
+func buildAIProvider(cfg config.Config, logger slogLogger) llmservice.Provider {
+	provider := strings.ToLower(strings.TrimSpace(cfg.LLMProvider))
+	if provider != "" && provider != "openai_compatible" {
+		logger.Error("unsupported llm provider configured; ai chat disabled", "provider", cfg.LLMProvider)
+		return nil
+	}
+
+	if strings.TrimSpace(cfg.LLMBaseURL) == "" || strings.TrimSpace(cfg.LLMAPIKey) == "" || strings.TrimSpace(cfg.LLMModel) == "" {
+		logger.Info("llm is not fully configured; ai chat mode will be unavailable")
+		return nil
+	}
+
+	return llmservice.NewOpenAICompatible(llmservice.Config{
+		BaseURL: cfg.LLMBaseURL,
+		APIKey:  cfg.LLMAPIKey,
+		Model:   cfg.LLMModel,
+		Timeout: cfg.LLMTimeout,
+	})
+}
+
 func setMyCommandsConfig() tgbotapi.SetMyCommandsConfig {
 	return tgbotapi.NewSetMyCommands(
 		tgbotapi.BotCommand{Command: "start", Description: "🚀 Старт"},
@@ -215,6 +236,10 @@ func setMyCommandsConfig() tgbotapi.SetMyCommandsConfig {
 		tgbotapi.BotCommand{Command: "ping", Description: "✅ Проверка статуса"},
 		tgbotapi.BotCommand{Command: "echo", Description: "🗣️ Повторить текст"},
 	)
+}
+
+func deleteMyCommandsConfig() tgbotapi.DeleteMyCommandsConfig {
+	return tgbotapi.NewDeleteMyCommands()
 }
 
 func main() {
@@ -246,6 +271,7 @@ func main() {
 	contentRepo := postgres.NewContentRepository(db)
 	contentSvc := contentservice.New(contentRepo)
 	learningSvc := learningflowservice.New()
+	aiProvider := buildAIProvider(cfg, logger)
 
 	tg, err := createBotWithRetry(cfg.Token, logger)
 	if err != nil {
@@ -273,6 +299,7 @@ func main() {
 		Repo:     contentRepo,
 		Content:  contentSvc,
 		Learning: learningSvc,
+		AI:       aiProvider,
 	}
 
 	logger.Info("bot started with long polling, press Ctrl+C to stop")
